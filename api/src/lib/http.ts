@@ -74,3 +74,27 @@ export const YearMonthSchema = z
   .openapi({ example: "2026-07" });
 
 export const YearSchema = z.coerce.number().int().min(2000).max(2100).openapi({ example: 2026 });
+
+/** Header facoltativo per ripetere un'operazione senza registrarla due volte. */
+export const IdempotencyHeaders = z.object({
+  "idempotency-key": z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: "Idempotency-Key", in: "header" },
+      description: "Valore casuale (16-100 caratteri) generato dal client per questa operazione e riusato nei tentativi successivi.",
+      example: "3f9c2b7e8a1d4c6f9e0b2a5d7c8e1f40",
+    }),
+});
+
+/** Header facoltativo per non sovrascrivere modifiche fatte da altri nel frattempo. */
+export const IfMatchHeaders = z.object({
+  "if-match": z
+    .string()
+    .optional()
+    .openapi({
+      param: { name: "If-Match", in: "header" },
+      description: 'Il valore updatedAt letto (o "none" se il dato non esisteva). Se nel frattempo è cambiato la risposta è 409 "stale".',
+      example: "2026-11-15T10:42:00Z",
+    }),
+});

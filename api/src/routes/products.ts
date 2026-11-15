@@ -2,8 +2,9 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { PRODUCT_COLUMNS, type ProductRow, STOCK_SQL, type VariantRow, findProduct, findVariant } from "../data/sales.ts";
 import { variantLabel } from "../domain/dues.ts";
 import { auditStatement } from "../lib/audit.ts";
+import { assertNotModified } from "../lib/concurrency.ts";
 import { conflict, invalid } from "../lib/errors.ts";
-import { DateSchema, IdParam, bearer, commonErrors, createRouter, errors, json } from "../lib/http.ts";
+import { DateSchema, IdParam, bearer, commonErrors, createRouter, errors, IfMatchHeaders, json } from "../lib/http.ts";
 import { nowIso, todayIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
 
@@ -38,6 +39,7 @@ export const ProductSchema = z
     tracksStock: z.boolean(),
     lowStockThreshold: z.number().int(),
     variants: z.array(VariantSchema),
+    updatedAt: z.string(),
   })
   .openapi("Product");
 
@@ -59,6 +61,7 @@ const toProduct = (r: ProductRow, variants: VariantRow[]) => ({
   active: r.active === 1,
   tracksStock: r.tracks_stock === 1,
   lowStockThreshold: r.low_stock_threshold,
+  updatedAt: r.updated_at,
   variants: r.tracks_stock === 1 ? variants.filter((v) => v.product_id === r.id).map((v) => toVariant(v, r.low_stock_threshold)) : [],
 });
 
@@ -98,6 +101,7 @@ const createProductRoute = createRoute({
 const updateProductRoute = createRoute({
   method: "patch", path: "/products/{id}", tags: ["Prodotti ed eventi"], summary: "Modifica o disattiva un prodotto", security: bearer,
   request: {
+    headers: IfMatchHeaders,
     params: IdParam,
     body: json(
       z
@@ -226,6 +230,7 @@ productRoutes
     const b = c.req.valid("json");
     const db = c.env.DB;
     const before = await findProduct(db, id);
+    await assertNotModified(c, before.updated_at, { entity: "product", entityId: id });
     const statements = [
       db
         .prepare(

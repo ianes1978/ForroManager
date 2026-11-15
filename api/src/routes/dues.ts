@@ -4,9 +4,10 @@ import { summarize } from "../domain/dues.ts";
 import { formatYearMonth, periodOf } from "../domain/periods.ts";
 import { auditStatement } from "../lib/audit.ts";
 import { conflict, invalid, notFound } from "../lib/errors.ts";
-import { DateSchema, IdParam, YearSchema, bearer, commonErrors, createRouter, errors, json } from "../lib/http.ts";
+import { DateSchema, IdParam, YearSchema, bearer, commonErrors, createRouter, errors, IdempotencyHeaders, json } from "../lib/http.ts";
 import { nowIso, todayIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
+import { idempotent } from "../middleware/idempotency.ts";
 import { prepareSale, restockStatement, runBatch } from "../data/sales.ts";
 
 export const SummarySchema = z
@@ -94,7 +95,9 @@ const chargeRoute = createRoute({
   tags: ["Quote"],
   summary: "Addebita un prodotto o evento al socio (da pagare subito o più tardi)",
   security: bearer,
+  middleware: [idempotent] as const,
   request: {
+    headers: IdempotencyHeaders,
     params: IdParam,
     body: json(
       z.object({

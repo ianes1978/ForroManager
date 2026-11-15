@@ -3,9 +3,10 @@ import { DUE_SELECT, DueSchema, type DueRow, toDue } from "../data/dues.ts";
 import { prepareSale, restockStatement, runBatch } from "../data/sales.ts";
 import { auditStatement } from "../lib/audit.ts";
 import { conflict, invalid, notFound } from "../lib/errors.ts";
-import { DateSchema, IdParam, bearer, commonErrors, createRouter, errors, json } from "../lib/http.ts";
+import { DateSchema, IdParam, bearer, commonErrors, createRouter, errors, IdempotencyHeaders, json } from "../lib/http.ts";
 import { nowIso, todayIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
+import { idempotent } from "../middleware/idempotency.ts";
 
 /**
  * Vendite di prodotti ed eventi a chi non è socio. Per minimizzare i dati
@@ -25,7 +26,9 @@ const createSaleRoute = createRoute({
   summary: "Vendita a un non socio, pagata subito o da saldare",
   description: "Con 'payment' la vendita è pagata subito per intero e non si registra alcun nome. Senza, 'buyerName' è obbligatorio.",
   security: bearer,
+  middleware: [idempotent] as const,
   request: {
+    headers: IdempotencyHeaders,
     body: json(
       z.object({
         productId: z.number().int().positive(),
@@ -58,7 +61,9 @@ const payRoute = createRoute({
   tags: ["Vendite a non soci"],
   summary: "Incassa una vendita a non socio rimasta da saldare",
   security: bearer,
+  middleware: [idempotent] as const,
   request: {
+    headers: IdempotencyHeaders,
     params: IdParam,
     body: json(
       z.object({

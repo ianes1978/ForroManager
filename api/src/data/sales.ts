@@ -14,6 +14,7 @@ export interface ProductRow {
   active: number;
   tracks_stock: number;
   low_stock_threshold: number;
+  updated_at: string;
 }
 
 export interface VariantRow {
@@ -25,7 +26,7 @@ export interface VariantRow {
   stock: number;
 }
 
-export const PRODUCT_COLUMNS = "id, name, type, price_cents, active, tracks_stock, low_stock_threshold";
+export const PRODUCT_COLUMNS = "id, name, type, price_cents, active, tracks_stock, low_stock_threshold, updated_at";
 
 export async function findProduct(db: D1Database, id: number): Promise<ProductRow> {
   const row = await db.prepare(`SELECT ${PRODUCT_COLUMNS} FROM products WHERE id = ?1`).bind(id).first<ProductRow>();

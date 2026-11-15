@@ -10,7 +10,7 @@ describe("gestione utenti", () => {
     const body = (await res.json()) as { items: Record<string, unknown>[] };
     expect(body.items.length).toBeGreaterThan(0);
     for (const u of body.items) {
-      expect(Object.keys(u).sort()).toEqual(["active", "createdAt", "email", "id", "mustChangePassword", "name"]);
+      expect(Object.keys(u).sort()).toEqual(["active", "createdAt", "email", "id", "mustChangePassword", "name", "updatedAt"]);
     }
   });
 

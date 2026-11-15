@@ -21,6 +21,7 @@ export const UserSchema = z
     active: z.boolean(),
     mustChangePassword: z.boolean(),
     createdAt: z.string(),
+    updatedAt: z.string(),
   })
   .openapi("User");
 
@@ -40,9 +41,10 @@ export interface UserRow {
   active: number;
   must_change_password: number;
   created_at: string;
+  updated_at: string;
 }
 
-export const USER_COLUMNS = "id, email, name, active, must_change_password, created_at";
+export const USER_COLUMNS = "id, email, name, active, must_change_password, created_at, updated_at";
 
 export function toUser(r: UserRow): z.infer<typeof UserSchema> {
   return {
@@ -52,5 +54,6 @@ export function toUser(r: UserRow): z.infer<typeof UserSchema> {
     active: r.active === 1,
     mustChangePassword: r.must_change_password === 1,
     createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
 }

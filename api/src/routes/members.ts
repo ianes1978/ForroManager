@@ -1,8 +1,9 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { formatYearMonth, overlaps, parseYearMonth } from "../domain/periods.ts";
 import { auditStatement } from "../lib/audit.ts";
+import { assertNotModified } from "../lib/concurrency.ts";
 import { conflict, invalid, notFound } from "../lib/errors.ts";
-import { DateSchema, IdParam, YearMonthSchema, bearer, commonErrors, createRouter, errors, json } from "../lib/http.ts";
+import { DateSchema, IdParam, YearMonthSchema, bearer, commonErrors, createRouter, errors, IfMatchHeaders, json } from "../lib/http.ts";
 import { nowIso, todayIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { SUMMARY_CTE, type SummaryColumns, summaryParams, toSummary } from "../data/summary.ts";
@@ -63,6 +64,7 @@ const updateRoute = createRoute({
   summary: "Modifica i dati del socio",
   security: bearer,
   request: {
+    headers: IfMatchHeaders,
     params: IdParam,
     body: json(MemberInputSchema.partial().refine((v) => Object.keys(v).length > 0, "Nessuna modifica indicata.")),
   },
@@ -254,6 +256,7 @@ memberRoutes
     const db = c.env.DB;
     const me = c.get("user").id;
     const before = await findMemberRow(db, id);
+    await assertNotModified(c, before.updated_at, { entity: "member", entityId: id });
     if (body.annualCategoryId !== undefined) await resolveCategory(db, "annuale", body.annualCategoryId);
     if (body.monthlyCategoryId !== undefined) await resolveCategory(db, "mensile", body.monthlyCategoryId);
 

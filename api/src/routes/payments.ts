@@ -5,9 +5,10 @@ import { allocate, compareForAllocation, dueLabel, type DueKind, splitCents } fr
 import { isSuspended, periodOf } from "../domain/periods.ts";
 import { auditStatement } from "../lib/audit.ts";
 import { conflict, invalid, notFound } from "../lib/errors.ts";
-import { DateSchema, IdParam, bearer, commonErrors, createRouter, errors, json } from "../lib/http.ts";
+import { DateSchema, IdParam, bearer, commonErrors, createRouter, errors, IdempotencyHeaders, json } from "../lib/http.ts";
 import { nowIso, todayIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
+import { idempotent } from "../middleware/idempotency.ts";
 
 // ---------------------------------------------------------------------------
 // Schemi
@@ -199,7 +200,9 @@ const createPaymentRoute = createRoute({
   description:
     "Le voci vengono coperte in ordine (associativa, mesi in ordine, prodotti). Un importo inferiore al totale copre prima le voci più vecchie.",
   security: bearer,
-  request: { body: json(CreatePaymentSchema) },
+  middleware: [idempotent] as const,
+  request: {
+    headers: IdempotencyHeaders, body: json(CreatePaymentSchema) },
   responses: { 201: { description: "Pagamento registrato", ...json(PaymentSchema) }, ...commonErrors, 404: errors[404], 409: errors[409] },
 });
 

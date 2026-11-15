@@ -1,7 +1,8 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { auditStatement } from "../lib/audit.ts";
+import { assertNotModified } from "../lib/concurrency.ts";
 import { conflict, notFound } from "../lib/errors.ts";
-import { IdParam, YearSchema, bearer, commonErrors, createRouter, errors, json } from "../lib/http.ts";
+import { IdParam, YearSchema, bearer, commonErrors, createRouter, errors, IfMatchHeaders, json } from "../lib/http.ts";
 import { nowIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
 
@@ -16,6 +17,7 @@ const FeeSchema = z
     active: z.boolean(),
     year: z.number().int(),
     amountCents: z.number().int().nullable().openapi({ description: "Null se l'importo per l'anno non è ancora stato fissato" }),
+    updatedAt: z.string().nullable().openapi({ description: 'Versione per If-Match ("none" se null)' }),
   })
   .openapi("Fee");
 
@@ -97,6 +99,7 @@ const setRateRoute = createRoute({
     "Con applyToUnpaid aggiorna anche le quote già generate di quell'anno e categoria che non hanno pagamenti e non hanno riduzioni personali.",
   security: bearer,
   request: {
+    headers: IfMatchHeaders,
     params: z.object({
       year: YearSchema.openapi({ param: { name: "year", in: "path" } }),
       categoryId: z.coerce.number().int().positive().openapi({ param: { name: "categoryId", in: "path" } }),
@@ -124,7 +127,7 @@ async function findCategory(db: D1Database, id: number): Promise<CategoryRow> {
 async function feeOf(db: D1Database, categoryId: number, year: number) {
   const row = await db
     .prepare(
-      `SELECT c.id, c.kind, c.name, c.months, c.active, r.amount_cents
+      `SELECT c.id, c.kind, c.name, c.months, c.active, r.amount_cents, r.updated_at
          FROM fee_categories c LEFT JOIN fee_rates r ON r.category_id = c.id AND r.year = ?2
         WHERE c.id = ?1`,
     )
@@ -133,7 +136,7 @@ async function feeOf(db: D1Database, categoryId: number, year: number) {
   return toFee(row!, year);
 }
 
-const toFee = (r: CategoryRow & { amount_cents: number | null }, year: number) => ({
+const toFee = (r: CategoryRow & { amount_cents: number | null; updated_at?: string | null }, year: number) => ({
   categoryId: r.id,
   kind: r.kind,
   name: r.name,
@@ -141,6 +144,7 @@ const toFee = (r: CategoryRow & { amount_cents: number | null }, year: number) =
   active: r.active === 1,
   year,
   amountCents: r.amount_cents,
+  updatedAt: r.updated_at ?? null,
 });
 
 export const feeRoutes = createRouter();
@@ -153,7 +157,7 @@ feeRoutes
   .openapi(listRoute, async (c) => {
     const { year } = c.req.valid("query");
     const { results } = await c.env.DB.prepare(
-      `SELECT c.id, c.kind, c.name, c.months, c.active, r.amount_cents
+      `SELECT c.id, c.kind, c.name, c.months, c.active, r.amount_cents, r.updated_at
          FROM fee_categories c LEFT JOIN fee_rates r ON r.category_id = c.id AND r.year = ?1
         ORDER BY CASE c.kind WHEN 'annuale' THEN 0 WHEN 'mensile' THEN 1 ELSE 2 END, c.id`,
     )
@@ -202,9 +206,10 @@ feeRoutes
     const db = c.env.DB;
     await findCategory(db, categoryId);
     const previous = await db
-      .prepare("SELECT amount_cents FROM fee_rates WHERE category_id = ?1 AND year = ?2")
+      .prepare("SELECT amount_cents, updated_at FROM fee_rates WHERE category_id = ?1 AND year = ?2")
       .bind(categoryId, year)
-      .first<{ amount_cents: number }>();
+      .first<{ amount_cents: number; updated_at: string }>();
+    await assertNotModified(c, previous?.updated_at ?? null, { entity: "fee_rate", entityId: categoryId });
     const now = nowIso();
     const statements: D1PreparedStatement[] = [
       db

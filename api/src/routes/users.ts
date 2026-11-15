@@ -1,8 +1,9 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { auditStatement } from "../lib/audit.ts";
+import { assertNotModified } from "../lib/concurrency.ts";
 import { hashPassword } from "../lib/crypto.ts";
 import { conflict, notFound } from "../lib/errors.ts";
-import { IdParam, bearer, commonErrors, createRouter, errors, json } from "../lib/http.ts";
+import { IdParam, bearer, commonErrors, createRouter, errors, IfMatchHeaders, json } from "../lib/http.ts";
 import { nowIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { EmailSchema, NewPasswordSchema, USER_COLUMNS, UserSchema, type UserRow, toUser } from "../schemas/users.ts";
@@ -46,6 +47,7 @@ const updateUserRoute = createRoute({
   summary: "Modifica nome, email o stato di un utente",
   security: bearer,
   request: {
+    headers: IfMatchHeaders,
     params: IdParam,
     body: json(
       z
@@ -132,6 +134,7 @@ userRoutes
     const db = c.env.DB;
     const me = c.get("user");
     const before = await findUser(db, id);
+    await assertNotModified(c, before.updated_at, { entity: "user", entityId: id });
     if (body.active === false && id === me.id) {
       throw conflict("cannot_deactivate_self", "Non puoi disattivare il tuo stesso utente.");
     }
