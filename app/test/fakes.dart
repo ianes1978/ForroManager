@@ -60,6 +60,22 @@ class FakeRepository extends Repository {
   final saleKeys = <String?>[];
   bool failNextPaymentWithNetwork = false;
 
+  List<FormDef> formsList = [];
+  List<FormMember> formMembersList = [];
+  final bulkCalls = <(int, String, List<int>)>[];
+
+  @override
+  Future<List<FormDef>> forms() async => formsList;
+
+  @override
+  Future<List<FormMember>> formMembers(int formId, {bool onlyMissing = false}) async => formMembersList;
+
+  @override
+  Future<(int, int)> bulkMemberForms(int formId, String action, List<int> memberIds) async {
+    bulkCalls.add((formId, action, memberIds));
+    return (memberIds.length, 0);
+  }
+
   /// Risposta di /version: di default allineata all'app.
   VersionInfo versionInfo = VersionInfo(apiLevel: kApiLevel, appDownloadUrl: 'https://example.invalid/apk');
 

@@ -1,4 +1,4 @@
 // Generato da `npm run openapi`: non modificare a mano.
 // Il livello aumenta quando cambia openapi.json; l'app deve avere lo stesso numero.
-export const API_LEVEL = 1;
-export const OPENAPI_SHA256 = "0883e3d8dcd9f000ed29eaef581f764930aa5f89be20928db03b0ec4187c0ff7";
+export const API_LEVEL = 2;
+export const OPENAPI_SHA256 = "0abb0bcba5b172cdf0f5f4c6b6127dbd5b9eace8a8d3c6d1788bdf5677d7fb5c";

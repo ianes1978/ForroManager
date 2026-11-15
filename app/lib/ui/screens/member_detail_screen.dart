@@ -366,6 +366,36 @@ class _FormsSection extends ConsumerWidget {
               trailing: f.returnedOn != null ? const StatusBadge('Firmato', tone: Tone.ok) : const StatusBadge('Da riavere', tone: Tone.warn),
               onTap: () async {
                 final returned = f.returnedOn != null;
+                final choice = await showModalBottomSheet<String>(
+                  context: context,
+                  showDragHandle: true,
+                  builder: (ctx) => SafeArea(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      ListTile(title: Text(f.formName, style: Theme.of(ctx).textTheme.titleMedium), subtitle: Text('Consegnato il ${dateShort(f.deliveredOn!)}')),
+                      ListTile(
+                        leading: Icon(returned ? Icons.undo : Icons.task_alt),
+                        title: Text(returned ? 'Di nuovo da riavere' : 'Segna restituito firmato'),
+                        onTap: () => Navigator.pop(ctx, 'toggle'),
+                      ),
+                      if (!returned)
+                        ListTile(
+                          leading: const Icon(Icons.remove_circle_outline),
+                          title: const Text('Ritira consegna'),
+                          subtitle: const Text('Se è stato segnato consegnato per errore'),
+                          onTap: () => Navigator.pop(ctx, 'withdraw'),
+                        ),
+                    ]),
+                  ),
+                );
+                if (choice == null || !context.mounted) return;
+                if (choice == 'withdraw') {
+                  final ok = await confirmAction(context,
+                      title: 'Ritirare ${f.formName}?', message: 'Da usare se è stato segnato consegnato per errore.', confirm: 'Ritira consegna', destructive: true);
+                  if (ok && context.mounted && await runAction(context, () => repo.setMemberForm(member.id, f.formId, delivered: false), success: '${f.formName}: consegna ritirata.')) {
+                    invalidateData(ref);
+                  }
+                  return;
+                }
                 final ok = await runAction(
                   context,
                   () => repo.setMemberForm(member.id, f.formId, returnedOn: returned ? null : today(), clearReturn: returned),

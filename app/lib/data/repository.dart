@@ -258,6 +258,11 @@ class Repository {
   Future<int> deliverFormToAll(int formId) async => ((await api.post('/forms/$formId/deliver-all')) as Json)['delivered'] as int;
   Future<List<MemberForm>> memberForms(int memberId) async =>
       _items(await api.get('/members/$memberId/forms'), MemberForm.fromJson);
+  /// Azione su più soci: 'deliver', 'return', 'unreturn' o 'withdraw'. Restituisce (cambiati, saltati).
+  Future<(int, int)> bulkMemberForms(int formId, String action, List<int> memberIds) async {
+    final res = await api.post('/forms/$formId/members', {'action': action, 'memberIds': memberIds}) as Json;
+    return (res['changed'] as int, res['skipped'] as int);
+  }
   Future<void> setMemberForm(int memberId, int formId, {bool delivered = true, String? returnedOn, bool clearReturn = false}) =>
       api.put('/members/$memberId/forms/$formId', {
         'delivered': delivered,

@@ -119,6 +119,10 @@ La specifica è generata dalle stesse definizioni usate per validare le richiest
   ricevuta sì/no. È pagata dalla cassa con un metodo, oppure anticipata da qualcuno
   (si salva solo il nome) e poi rimborsata. Il riepilogo e il report Excel mostrano
   spese per mese e categoria, quanto resta da rimborsare e il saldo incassi − spese.
+- **Moduli**: si consegnano a tutti i soci attivi o solo ad alcuni (selezione
+  multipla); con la selezione si segnano firmati, si rimettono da riavere o si
+  ritira una consegna fatta per errore (`POST /forms/{id}/members`). I moduli già
+  firmati non vengono ritirati.
 - **Correzioni**: oltre ai dati anagrafici si correggono pagamenti, importi delle
   quote, mesi dei periodi, taglia e colore delle varianti; un carico o una
   rettifica di magazzino sbagliati si eliminano.

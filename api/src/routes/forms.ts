@@ -74,6 +74,29 @@ const deliverAllRoute = createRoute({
   request: { params: FormIdParam, body: json(z.object({ deliveredOn: DateSchema.optional() })) },
   responses: { 200: { description: "Esito", ...json(z.object({ delivered: z.number().int() })) }, ...commonErrors, 404: errors[404] },
 });
+const bulkRoute = createRoute({
+  method: "post", path: "/forms/{formId}/members", tags: ["Moduli"], security: bearer,
+  summary: "Consegna, segna firmato, rimette da riavere o ritira il modulo per più soci insieme",
+  description:
+    "deliver: consegna ai soci attivi che non l'hanno ancora. return: segna restituito firmato. unreturn: di nuovo da riavere. " +
+    "withdraw: annulla la consegna (registrata per errore); i moduli già firmati non vengono ritirati e sono contati in skipped.",
+  request: {
+    params: FormIdParam,
+    body: json(
+      z.object({
+        action: z.enum(["deliver", "return", "unreturn", "withdraw"]),
+        memberIds: z.array(z.number().int().positive()).min(1, "Scegli almeno un socio.").max(300),
+        date: DateSchema.optional().openapi({ description: "Data di consegna o di restituzione (predefinita: oggi)" }),
+      }),
+    ),
+  },
+  responses: {
+    200: { description: "Esito", ...json(z.object({ changed: z.number().int(), skipped: z.number().int() })) },
+    ...commonErrors,
+    404: errors[404],
+    409: errors[409],
+  },
+});
 const memberFormsRoute = createRoute({
   method: "get", path: "/members/{id}/forms", tags: ["Moduli"], summary: "Moduli consegnati al socio", security: bearer,
   request: { params: IdParam },
@@ -166,6 +189,49 @@ formRoutes
     const delivered = res.meta.changes ?? 0;
     await auditStatement(db, me, "update", "form", formId, { deliverAll: delivered }).run();
     return c.json({ delivered }, 200);
+  })
+  .openapi(bulkRoute, async (c) => {
+    const { formId } = c.req.valid("param");
+    const { action, memberIds, date } = c.req.valid("json");
+    const db = c.env.DB;
+    const me = c.get("user").id;
+    const form = await findForm(db, formId);
+    const ids = JSON.stringify([...new Set(memberIds)]);
+    const day = date ?? todayIso();
+    const now = nowIso();
+    const inList = "member_id IN (SELECT value FROM json_each(?2))";
+    let sql: D1PreparedStatement;
+    let skipped = 0;
+    switch (action) {
+      case "deliver":
+        if (form.active !== 1) throw conflict("form_inactive", "Il modulo è disattivato: riattivalo per consegnarlo.");
+        sql = db
+          .prepare(
+            `INSERT INTO member_forms (member_id, form_id, delivered_on, updated_at, updated_by)
+             SELECT m.id, ?1, ?3, ?4, ?5 FROM members m
+              WHERE m.status = 'attivo' AND m.id IN (SELECT value FROM json_each(?2))
+                AND NOT EXISTS (SELECT 1 FROM member_forms x WHERE x.member_id = m.id AND x.form_id = ?1)`,
+          )
+          .bind(formId, ids, day, now, me);
+        break;
+      case "return":
+        sql = db
+          .prepare(`UPDATE member_forms SET returned_on = MAX(?3, delivered_on), updated_at = ?4, updated_by = ?5 WHERE form_id = ?1 AND returned_on IS NULL AND ${inList}`)
+          .bind(formId, ids, day, now, me);
+        break;
+      case "unreturn":
+        sql = db
+          .prepare(`UPDATE member_forms SET returned_on = NULL, updated_at = ?3, updated_by = ?4 WHERE form_id = ?1 AND returned_on IS NOT NULL AND ${inList}`)
+          .bind(formId, ids, now, me);
+        break;
+      case "withdraw":
+        skipped =
+          (await db.prepare(`SELECT COUNT(*) AS n FROM member_forms WHERE form_id = ?1 AND returned_on IS NOT NULL AND ${inList}`).bind(formId, ids).first<{ n: number }>())?.n ?? 0;
+        sql = db.prepare(`DELETE FROM member_forms WHERE form_id = ?1 AND returned_on IS NULL AND ${inList}`).bind(formId, ids);
+        break;
+    }
+    const [res] = await db.batch([sql, auditStatement(db, me, action === "withdraw" ? "delete" : "update", "member_form", formId, { form: form.name, action, members: memberIds.length })]);
+    return c.json({ changed: res?.meta.changes ?? 0, skipped }, 200);
   })
   .openapi(memberFormsRoute, async (c) => {
     const { id } = c.req.valid("param");
