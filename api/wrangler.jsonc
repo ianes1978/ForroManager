@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Nome specifico del progetto: l'account ospita anche altri Worker.
+  "name": "forromanager-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-15",
+  "observability": {
+    "enabled": true,
+    "traces": { "enabled": true }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "forromanager-db",
+      // Da sostituire con l'id restituito da:
+      //   npx wrangler d1 create forromanager-db --jurisdiction=eu
+      // In locale (wrangler dev, test) l'id non viene usato.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Build web dell'app Flutter, servita come file statici dallo stesso Worker.
+  // Le richieste /api/* passano sempre dal codice del Worker.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    // Origine consentita per CORS in sviluppo (server di sviluppo Flutter web).
+    // In produzione app e API hanno la stessa origine e CORS non serve.
+    "DEV_CORS_ORIGIN": ""
+  }
+}
