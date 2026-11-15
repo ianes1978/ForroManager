@@ -5,14 +5,16 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
  * (da mostrare all'utente). Viene trasformato in JSON dal gestore globale.
  */
 export class ApiError extends Error {
-  constructor(
-    readonly status: ContentfulStatusCode,
-    readonly code: string,
-    message: string,
-    readonly details?: unknown,
-  ) {
+  readonly status: ContentfulStatusCode;
+  readonly code: string;
+  readonly details?: unknown;
+
+  constructor(status: ContentfulStatusCode, code: string, message: string, details?: unknown) {
     super(message);
     this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
   }
 }
 

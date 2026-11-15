@@ -11,6 +11,7 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
     "types": []
   },
   "include": ["src/**/*.ts"]
