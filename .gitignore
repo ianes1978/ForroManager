@@ -79,3 +79,4 @@ build/
 api/public/*
 !api/public/.gitkeep
 .user.sql
+app/config/prod.json
