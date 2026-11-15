@@ -62,6 +62,17 @@ const incomeRoute = createRoute({
             byMethod: z.array(z.object({ code: z.string(), label: z.string(), cents: z.number().int() })),
             byKind: z.object({ annuale: z.number().int(), mensile: z.number().int(), periodo: z.number().int(), prodotto: z.number().int() }),
             bySource: z.object({ soci: z.number().int(), nonSoci: z.number().int() }).openapi({ description: "Incassi da soci e da vendite a non soci" }),
+            expenses: z
+              .object({
+                totalCents: z.number().int(),
+                byMonth: z.array(z.number().int()).length(12).openapi({ description: "Gennaio..dicembre, per data della spesa" }),
+                byCategory: z.array(z.object({ id: z.number().int(), name: z.string(), cents: z.number().int() })),
+                toReimburseCents: z.number().int().openapi({ description: "Ancora da rimborsare a chi le ha anticipate (tutte le date)" }),
+                toReimburseCount: z.number().int(),
+                noReceiptCount: z.number().int().openapi({ description: "Spese dell'anno senza ricevuta" }),
+              })
+              .openapi({ description: "Spese dell'anno" }),
+            balanceCents: z.number().int().openapi({ description: "Incassi meno spese dell'anno" }),
           })
           .openapi("IncomeReport"),
       ),
@@ -77,7 +88,7 @@ const fullRoute = createRoute({
   path: "/reports/full",
   tags: ["Riepilogo"],
   summary: "Dati completi per il report Excel (di un anno o di tutto lo storico)",
-  description: "Soci con situazione, quote e iscrizioni, pagamenti con le voci, vendite e movimenti di magazzino. Importi in centesimi.",
+  description: "Soci con situazione, quote e iscrizioni, pagamenti con le voci, vendite, movimenti di magazzino e spese. Importi in centesimi.",
   security: bearer,
   request: { query: z.object({ year: YearSchema.optional().openapi({ description: "Senza anno: tutto lo storico" }) }) },
   responses: {
@@ -93,6 +104,7 @@ const fullRoute = createRoute({
             payments: z.array(FullRowSchema),
             sales: z.array(FullRowSchema),
             stock: z.array(FullRowSchema),
+            expenses: z.array(FullRowSchema),
           })
           .openapi("FullReport"),
       ),
@@ -113,7 +125,7 @@ reportRoutes
     const to = year ? `${year}-12-31` : "9999-12-31";
     const PAID = `COALESCE((SELECT SUM(a.amount_cents) FROM payment_allocations a JOIN payments p ON p.id = a.payment_id
                              WHERE a.due_id = d.id AND p.voided_at IS NULL), 0)`;
-    const [members, dues, payments, allocs, stock] = await db.batch([
+    const [members, dues, payments, allocs, stock, expenses] = await db.batch([
       db
         .prepare(
           `WITH ${SUMMARY_CTE}
@@ -162,6 +174,15 @@ reportRoutes
              FROM stock_movements m JOIN product_variants v ON v.id = m.variant_id JOIN products pr ON pr.id = v.product_id
              JOIN users u ON u.id = m.created_by LEFT JOIN dues d ON d.id = m.due_id LEFT JOIN members mb ON mb.id = d.member_id
             WHERE m.moved_on BETWEEN ?1 AND ?2 ORDER BY m.moved_on, m.id`,
+        )
+        .bind(from, to),
+      db
+        .prepare(
+          `SELECT e.spent_on, e.description, c.name AS category, e.amount_cents, pm.label AS method, e.advanced_by, e.reimbursed_on,
+                  e.has_receipt, e.note, u.name AS recorded_by
+             FROM expenses e JOIN expense_categories c ON c.id = e.category_id LEFT JOIN payment_methods pm ON pm.id = e.method_id
+             JOIN users u ON u.id = e.created_by
+            WHERE e.spent_on BETWEEN ?1 AND ?2 ORDER BY e.spent_on, e.id`,
         )
         .bind(from, to),
     ]);
@@ -219,6 +240,11 @@ reportRoutes
           data: r.moved_on, prodotto: r.product, variante: r.variant ?? "Unica", movimento: r.kind, quantita: r.quantity, aChi: r.sold_to,
           nota: r.note, registratoDa: r.recorded_by,
         })),
+        expenses: rows(expenses).map((r) => out({
+          data: r.spent_on, descrizione: r.description, categoria: r.category, importoCents: r.amount_cents, pagataCon: r.method,
+          anticipataDa: r.advanced_by, rimborsataIl: r.reimbursed_on, daRimborsare: r.advanced_by !== null && r.reimbursed_on === null,
+          ricevuta: r.has_receipt === 1, nota: r.note, registrataDa: r.recorded_by,
+        })),
       },
       200,
     );
@@ -261,7 +287,7 @@ reportRoutes
     const year = c.req.valid("query").year ?? Number(todayIso().slice(0, 4));
     const db = c.env.DB;
     const range = [`${year}-01-01`, `${year}-12-31`];
-    const [byMonth, byMethod, byKind, bySource] = await db.batch([
+    const [byMonth, byMethod, byKind, bySource, expMonth, expCategory, expOpen] = await db.batch([
       db
         .prepare(
           `SELECT CAST(substr(paid_on, 6, 2) AS INTEGER) AS month, SUM(amount_cents) AS cents
@@ -290,7 +316,31 @@ reportRoutes
              FROM payments WHERE voided_at IS NULL AND paid_on BETWEEN ?1 AND ?2`,
         )
         .bind(...range),
+      db
+        .prepare(
+          `SELECT CAST(substr(spent_on, 6, 2) AS INTEGER) AS month, SUM(amount_cents) AS cents
+             FROM expenses WHERE spent_on BETWEEN ?1 AND ?2 GROUP BY month`,
+        )
+        .bind(...range),
+      db
+        .prepare(
+          `SELECT c.id, c.name, SUM(e.amount_cents) AS cents FROM expenses e JOIN expense_categories c ON c.id = e.category_id
+            WHERE e.spent_on BETWEEN ?1 AND ?2 GROUP BY c.id ORDER BY cents DESC`,
+        )
+        .bind(...range),
+      db
+        .prepare(
+          `SELECT COALESCE(SUM(CASE WHEN advanced_by IS NOT NULL AND reimbursed_on IS NULL THEN amount_cents END), 0) AS open_cents,
+                  COUNT(CASE WHEN advanced_by IS NOT NULL AND reimbursed_on IS NULL THEN 1 END) AS open_count,
+                  COUNT(CASE WHEN has_receipt = 0 AND spent_on BETWEEN ?1 AND ?2 THEN 1 END) AS no_receipt
+             FROM expenses`,
+        )
+        .bind(...range),
     ]);
+    const expMonths = Array.from({ length: 12 }, () => 0);
+    for (const r of expMonth!.results as { month: number; cents: number }[]) expMonths[r.month - 1] = r.cents;
+    const expTotal = expMonths.reduce((a, b) => a + b, 0);
+    const open = (expOpen!.results as { open_cents: number; open_count: number; no_receipt: number }[])[0]!;
     const source = (bySource!.results as { soci: number; non_soci: number }[])[0] ?? { soci: 0, non_soci: 0 };
     const months = Array.from({ length: 12 }, () => 0);
     for (const r of byMonth!.results as { month: number; cents: number }[]) months[r.month - 1] = r.cents;
@@ -304,6 +354,15 @@ reportRoutes
         byMethod: (byMethod!.results as { code: string; label: string; cents: number }[]).map((r) => ({ code: r.code, label: r.label, cents: r.cents })),
         byKind: kinds,
         bySource: { soci: source.soci, nonSoci: source.non_soci },
+        expenses: {
+          totalCents: expTotal,
+          byMonth: expMonths,
+          byCategory: (expCategory!.results as { id: number; name: string; cents: number }[]).map((r) => ({ id: r.id, name: r.name, cents: r.cents })),
+          toReimburseCents: open.open_cents,
+          toReimburseCount: open.open_count,
+          noReceiptCount: open.no_receipt,
+        },
+        balanceCents: months.reduce((a, b) => a + b, 0) - expTotal,
       },
       200,
     );

@@ -9,7 +9,7 @@ import { PERIOD_LABEL_SQL, VARIANT_LABEL_SQL } from "./dues.ts";
  * l'eliminazione; gli altri vengono eliminati insieme e sono elencati nell'avviso.
  */
 
-export const USAGE_KINDS = ["member", "product", "variant", "fee-category", "payment-method", "form", "course", "course-period", "due"] as const;
+export const USAGE_KINDS = ["member", "product", "variant", "fee-category", "payment-method", "form", "course", "course-period", "due", "expense-category"] as const;
 export type UsageKind = (typeof USAGE_KINDS)[number];
 
 export const UseSchema = z.object({
@@ -62,6 +62,7 @@ const SINGULAR: Record<string, string> = {
   "consegne non ancora restituite": "consegna non ancora restituita",
   "iscritti": "iscritto",
   "periodi": "periodo",
+  "spese": "spesa",
   "pagamenti (anche annullati)": "pagamento (anche annullato)",
   "movimenti di magazzino (la merce torna disponibile)": "movimento di magazzino (la merce torna disponibile)",
 };
@@ -246,6 +247,7 @@ export async function usageOf(db: D1Database, kind: UsageKind, rawId: string): P
         [
           ...(lastActive ? [{ what: "è l'unico metodo attivo", blocking: true, count: 1, examples: [] }] : []),
           { what: "pagamenti", blocking: true, count: await count(db, "SELECT COUNT(*) AS n FROM payments WHERE method_id = ?1", m.id), examples: pays.results.map((r) => r.x) },
+          { what: "spese", blocking: true, count: await count(db, "SELECT COUNT(*) AS n FROM expenses WHERE method_id = ?1", m.id), examples: [] },
         ],
         "Puoi disattivarlo: non sarà più proposto negli incassi.",
       );
@@ -281,6 +283,21 @@ export async function usageOf(db: D1Database, kind: UsageKind, rawId: string): P
           ...(isCourse ? [{ what: "periodi", blocking: false, count: await count(db, "SELECT COUNT(*) AS n FROM course_periods WHERE course_id = ?1", id), examples: [] }] : []),
         ],
         isCourse ? "Puoi disattivarlo per nasconderlo." : "Puoi chiuderlo alle iscrizioni.",
+      );
+    }
+    case "expense-category": {
+      const name = await nameOf(db, "SELECT name AS x FROM expense_categories WHERE id = ?1", id, "Categoria");
+      return build(
+        name,
+        [
+          {
+            what: "spese",
+            blocking: true,
+            count: await count(db, "SELECT COUNT(*) AS n FROM expenses WHERE category_id = ?1", id),
+            examples: await names(db, "SELECT description AS x FROM expenses WHERE category_id = ?1 ORDER BY spent_on DESC", id),
+          },
+        ],
+        "Puoi disattivarla: non sarà più proposta per le nuove spese.",
       );
     }
     case "due": {
