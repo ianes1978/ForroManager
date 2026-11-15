@@ -17,6 +17,7 @@ import 'ui/screens/methods_screen.dart';
 import 'ui/screens/more_screen.dart';
 import 'ui/screens/payments_screen.dart';
 import 'ui/screens/products_screen.dart';
+import 'ui/screens/sale_screen.dart';
 import 'ui/screens/summary_screen.dart';
 import 'ui/screens/users_screen.dart';
 
@@ -74,11 +75,19 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/vendita',
+        builder: (_, s) => SaleScreen(memberId: int.tryParse(s.uri.queryParameters['socio'] ?? '')),
+      ),
+      GoRoute(
         path: '/pagamenti/:id',
         builder: (_, s) => PaymentDetailScreen(paymentId: int.parse(s.pathParameters['id']!)),
       ),
       GoRoute(path: '/altro/tariffe', builder: (_, _) => const FeesScreen()),
       GoRoute(path: '/altro/prodotti', builder: (_, _) => const ProductsScreen()),
+      GoRoute(
+        path: '/altro/prodotti/:id',
+        builder: (_, s) => ProductDetailScreen(productId: int.parse(s.pathParameters['id']!)),
+      ),
       GoRoute(path: '/altro/moduli', builder: (_, _) => const FormsScreen()),
       GoRoute(
         path: '/altro/moduli/:id',

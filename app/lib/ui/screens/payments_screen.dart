@@ -125,7 +125,10 @@ class PaymentDetailScreen extends ConsumerWidget {
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                InkWell(onTap: () => context.push('/soci/${p.memberId}'), child: InfoRow('Socio', p.memberName)),
+                if (p.memberId != null)
+                  InkWell(onTap: () => context.push('/soci/${p.memberId}'), child: InfoRow('Socio', p.memberName))
+                else
+                  const InfoRow('Acquirente', 'Non socio'),
                 InfoRow('Data', dateLong(p.paidOn)),
                 InfoRow('Metodo', p.methodLabel),
                 InfoRow('Registrato da', '${p.recordedBy}, ${dateTime(p.createdAt)}'),

@@ -165,7 +165,7 @@ class _DuesSection extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: OutlinedButton.icon(
-                  onPressed: () => showSellProductSheet(context, ref, member.id),
+                  onPressed: () => context.push('/vendita?socio=${member.id}'),
                   icon: const Icon(Icons.shopping_bag_outlined),
                   label: const Text('Aggiungi prodotto o evento'),
                 ),
@@ -285,64 +285,6 @@ Future<bool> showAdjustSheet(BuildContext context, WidgetRef ref, Due due) async
     ),
   );
   return result ?? false;
-}
-
-/// Vendita di un prodotto o evento: si paga subito o più tardi.
-Future<void> showSellProductSheet(BuildContext context, WidgetRef ref, int memberId) async {
-  final products = await runCatching(context, () => ref.read(repositoryProvider).products());
-  if (products == null || !context.mounted) return;
-  if (products.isEmpty) {
-    showMessage(context, 'Nessun prodotto nel catalogo: aggiungilo da Altro → Prodotti ed eventi.');
-    return;
-  }
-  final choice = await showModalBottomSheet<(Product, bool)>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (ctx) {
-      Product? selected;
-      return StatefulBuilder(
-        builder: (ctx, setState) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Text('Cosa acquista?', style: Theme.of(ctx).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              Flexible(
-                child: ListView(shrinkWrap: true, children: [
-                  for (final p in products)
-                    ListTile(
-                      title: Text(p.name),
-                      subtitle: Text(p.typeLabel),
-                      trailing: Text(euro(p.priceCents)),
-                      selected: selected?.id == p.id,
-                      leading: Icon(selected?.id == p.id ? Icons.radio_button_checked : Icons.radio_button_unchecked),
-                      onTap: () => setState(() => selected = p),
-                    ),
-                ]),
-              ),
-              const SizedBox(height: 8),
-              FilledButton(onPressed: selected == null ? null : () => Navigator.pop(ctx, (selected!, true)), child: const Text('Paga adesso')),
-              const SizedBox(height: 8),
-              OutlinedButton(onPressed: selected == null ? null : () => Navigator.pop(ctx, (selected!, false)), child: const Text('Paga più tardi')),
-              const SizedBox(height: 4),
-              const Text('"Paga più tardi" registra l\'addebito: il socio risulterà con un prodotto da saldare.', textAlign: TextAlign.center),
-            ]),
-          ),
-        ),
-      );
-    },
-  );
-  if (choice == null || !context.mounted) return;
-  final (product, payNow) = choice;
-  final due = await runCatching(context, () => ref.read(repositoryProvider).chargeProduct(memberId, product.id));
-  if (due == null || !context.mounted) return;
-  invalidateData(ref);
-  if (payNow) {
-    context.push('/incassa?socio=$memberId&quota=${due.id}');
-  } else {
-    showMessage(context, '${product.name} addebitato: da saldare ${euro(product.priceCents)}.');
-  }
 }
 
 /// Come runAction ma restituisce il valore (o null in caso di errore, già mostrato).

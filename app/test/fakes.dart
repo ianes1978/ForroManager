@@ -51,6 +51,39 @@ class FakeRepository extends Repository {
   List<Fee> feesList = [];
   final calls = <String>[];
   Map<String, Object?>? lastPayment;
+  Map<String, Object?>? lastSale;
+  List<Product> productsList = [];
+
+  @override
+  Future<List<Product>> products({bool includeInactive = false}) async => productsList;
+
+  @override
+  Future<(Due, int?)> createSale({
+    required int productId,
+    int? variantId,
+    int quantity = 1,
+    int? amountCents,
+    String? reason,
+    String? buyerName,
+    String? payNowMethod,
+  }) async {
+    lastSale = {
+      'productId': productId,
+      'variantId': variantId,
+      'quantity': quantity,
+      'amountCents': amountCents,
+      'buyerName': buyerName,
+      'payNowMethod': payNowMethod,
+    };
+    final p = productsList.firstWhere((x) => x.id == productId);
+    final total = amountCents ?? p.priceCents * quantity;
+    final stock = variantId == null ? null : p.variants.firstWhere((v) => v.id == variantId).stock - quantity;
+    return (
+      Due(id: 99, kind: 'prodotto', year: 2026, label: p.name, baseAmountCents: total, amountCents: total, paidCents: payNowMethod != null ? total : 0,
+          remainingCents: payNowMethod != null ? 0 : total, status: payNowMethod != null ? 'pagata' : 'da_pagare', chargedOn: '2026-11-15'),
+      stock,
+    );
+  }
 
   @override
   Future<(String, SessionUser)> login(String email, String password) async {

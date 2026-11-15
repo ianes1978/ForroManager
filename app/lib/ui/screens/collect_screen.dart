@@ -122,6 +122,14 @@ class _PickMemberState extends ConsumerState<_PickMember> {
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: OutlinedButton.icon(
+          onPressed: () => context.push('/vendita'),
+          icon: const Icon(Icons.storefront_outlined),
+          label: const Text('Vendita a non socio'),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: SearchBar(hintText: 'Cerca socio', leading: const Icon(Icons.search), autoFocus: true, onChanged: (v) => setState(() => _q = v.trim())),
       ),
       Expanded(
@@ -252,7 +260,7 @@ class _PickDues extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 OutlinedButton.icon(
-                  onPressed: m == null || !m.active ? null : () => showSellFromCollect(context, ref, memberId),
+                  onPressed: m == null || !m.active ? null : () => context.push('/vendita?socio=$memberId'),
                   icon: const Icon(Icons.shopping_bag_outlined),
                   label: const Text('Vendi prodotto o evento'),
                 ),
@@ -267,34 +275,6 @@ class _PickDues extends ConsumerWidget {
         ]);
       },
     );
-  }
-}
-
-/// Addebito di un prodotto dal flusso Incassa (le voci aperte si aggiornano da sole).
-Future<void> showSellFromCollect(BuildContext context, WidgetRef ref, int memberId) async {
-  final repo = ref.read(repositoryProvider);
-  List<Product> products;
-  try {
-    products = await repo.products();
-  } on Object catch (e) {
-    if (context.mounted) showMessage(context, errorMessage(e));
-    return;
-  }
-  if (!context.mounted) return;
-  final p = await showModalBottomSheet<Product>(
-    context: context,
-    showDragHandle: true,
-    builder: (ctx) => SafeArea(
-      child: ListView(shrinkWrap: true, children: [
-        const ListTile(title: Text('Cosa acquista?')),
-        if (products.isEmpty) const ListTile(title: Text('Catalogo vuoto: aggiungi i prodotti da Altro.')),
-        for (final x in products) ListTile(title: Text(x.name), subtitle: Text(x.typeLabel), trailing: Text(euro(x.priceCents)), onTap: () => Navigator.pop(ctx, x)),
-      ]),
-    ),
-  );
-  if (p == null || !context.mounted) return;
-  if (await runAction(context, () => repo.chargeProduct(memberId, p.id), success: '${p.name} aggiunto: ora puoi selezionarlo.')) {
-    invalidateData(ref);
   }
 }
 
