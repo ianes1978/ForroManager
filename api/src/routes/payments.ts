@@ -1,5 +1,6 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { type DueRow, memberDues } from "../data/dues.ts";
+import { type DueRow, VARIANT_LABEL_SQL, memberDues } from "../data/dues.ts";
+import { restockStatement } from "../data/sales.ts";
 import { allocate, compareForAllocation, dueLabel, type DueKind, splitCents } from "../domain/dues.ts";
 import { isSuspended, periodOf } from "../domain/periods.ts";
 import { auditStatement } from "../lib/audit.ts";
@@ -18,8 +19,8 @@ const AllocationSchema = z.object({ dueId: z.number().int(), label: z.string(), 
 export const PaymentSchema = z
   .object({
     id: z.number().int(),
-    memberId: z.number().int(),
-    memberName: z.string(),
+    memberId: z.number().int().nullable(),
+    memberName: z.string().openapi({ description: "Nome del socio oppure \"Non socio\"" }),
     paidOn: z.string(),
     amountCents: z.number().int(),
     method: z.object({ code: z.string(), label: z.string() }),
@@ -58,9 +59,9 @@ const CreatePaymentSchema = z.object({
 // ---------------------------------------------------------------------------
 interface PaymentRow {
   id: number;
-  member_id: number;
-  first_name: string;
-  last_name: string;
+  member_id: number | null;
+  first_name: string | null;
+  last_name: string | null;
   paid_on: string;
   amount_cents: number;
   method_code: string;
@@ -81,6 +82,8 @@ interface AllocationRow {
   year: number;
   month: number | null;
   product_name: string | null;
+  variant_label: string | null;
+  quantity: number;
 }
 
 const PAYMENT_SELECT = `
@@ -88,24 +91,28 @@ const PAYMENT_SELECT = `
          pm.code AS method_code, pm.label AS method_label, p.note, p.recorded_by, u.name AS recorded_by_name,
          p.created_at, p.voided_at, p.void_reason
     FROM payments p
-    JOIN members m ON m.id = p.member_id
+    LEFT JOIN members m ON m.id = p.member_id
     JOIN payment_methods pm ON pm.id = p.method_id
     JOIN users u ON u.id = p.recorded_by`;
 
 const ALLOCATION_SELECT = `
-  SELECT a.payment_id, a.due_id, a.amount_cents, d.kind, d.year, d.month, pr.name AS product_name
+  SELECT a.payment_id, a.due_id, a.amount_cents, d.kind, d.year, d.month, pr.name AS product_name,
+         ${VARIANT_LABEL_SQL} AS variant_label, d.quantity
     FROM payment_allocations a
     JOIN dues d ON d.id = a.due_id
-    LEFT JOIN products pr ON pr.id = d.product_id`;
+    LEFT JOIN products pr ON pr.id = d.product_id
+    LEFT JOIN product_variants v ON v.id = d.variant_id`;
 
 const MESI_BREVI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
 const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
 
 /** Descrizione breve: "Mensile luglio 2026", "Mensili ott 2026–gen 2027", "Quota associativa 2026 + 2 mensili"... */
-export function describeAllocations(allocs: Pick<AllocationRow, "kind" | "year" | "month" | "product_name">[]): string {
+export function describeAllocations(
+  allocs: (Pick<AllocationRow, "kind" | "year" | "month" | "product_name"> & Partial<Pick<AllocationRow, "variant_label" | "quantity">>)[],
+): string {
   if (allocs.length === 1) {
     const a = allocs[0]!;
-    return dueLabel({ kind: a.kind, year: a.year, month: a.month, productName: a.product_name });
+    return dueLabel({ kind: a.kind, year: a.year, month: a.month, productName: a.product_name, variantLabel: a.variant_label, quantity: a.quantity });
   }
   const months = allocs.filter((a) => a.kind === "mensile").sort((a, b) => periodOf(a.year, a.month!) - periodOf(b.year, b.month!));
   const parts: string[] = [];
@@ -115,7 +122,9 @@ export function describeAllocations(allocs: Pick<AllocationRow, "kind" | "year" 
     const f = months[0]!, l = months[months.length - 1]!;
     parts.push(f.year === l.year ? `Mensili ${MESI_BREVI[f.month! - 1]}–${MESI_BREVI[l.month! - 1]} ${l.year}` : `Mensili ${MESI_BREVI[f.month! - 1]} ${f.year}–${MESI_BREVI[l.month! - 1]} ${l.year}`);
   }
-  for (const a of allocs.filter((x) => x.kind === "prodotto")) parts.push(a.product_name ?? "Prodotto");
+  for (const a of allocs.filter((x) => x.kind === "prodotto")) {
+    parts.push(dueLabel({ kind: "prodotto", year: a.year, month: null, productName: a.product_name, variantLabel: a.variant_label, quantity: a.quantity }));
+  }
   return parts.join(" + ");
 }
 
@@ -123,7 +132,7 @@ function toPayment(r: PaymentRow, allocs: AllocationRow[]): z.infer<typeof Payme
   return {
     id: r.id,
     memberId: r.member_id,
-    memberName: `${r.last_name} ${r.first_name}`,
+    memberName: r.member_id === null ? "Non socio" : `${r.last_name} ${r.first_name}`,
     paidOn: r.paid_on,
     amountCents: r.amount_cents,
     method: { code: r.method_code, label: r.method_label },
@@ -135,7 +144,7 @@ function toPayment(r: PaymentRow, allocs: AllocationRow[]): z.infer<typeof Payme
     voidReason: r.void_reason,
     allocations: allocs.map((a) => ({
       dueId: a.due_id,
-      label: dueLabel({ kind: a.kind, year: a.year, month: a.month, productName: a.product_name }),
+      label: dueLabel({ kind: a.kind, year: a.year, month: a.month, productName: a.product_name, variantLabel: a.variant_label, quantity: a.quantity }),
       amountCents: a.amount_cents,
     })),
     description: describeAllocations(allocs),
@@ -496,10 +505,32 @@ paymentRoutes
     const me = c.get("user").id;
     const current = await findPayment(db, id);
     if (current.voided) throw conflict("already_voided", "Il pagamento è già annullato.");
-    await db.batch([
+    const statements = [
       db.prepare("UPDATE payments SET voided_at = ?1, voided_by = ?2, void_reason = ?3 WHERE id = ?4").bind(nowIso(), me, reason, id),
       auditStatement(db, me, "void", "payment", id, { memberId: current.memberId, amountCents: current.amountCents, reason }),
-    ]);
+    ];
+    // Vendita a non socio pagata: annullando il pagamento si annulla anche la vendita
+    // (non resterebbe un debito di uno sconosciuto) e la merce torna in magazzino,
+    // a meno che la vendita non abbia altri pagamenti validi.
+    if (current.memberId === null) {
+      const { results } = await db
+        .prepare(
+          `SELECT d.id, d.variant_id, d.quantity FROM payment_allocations a JOIN dues d ON d.id = a.due_id
+            WHERE a.payment_id = ?1 AND d.member_id IS NULL AND d.cancelled_at IS NULL
+              AND NOT EXISTS (SELECT 1 FROM payment_allocations a2 JOIN payments p2 ON p2.id = a2.payment_id
+                               WHERE a2.due_id = d.id AND a2.payment_id <> ?1 AND p2.voided_at IS NULL)`,
+        )
+        .bind(id)
+        .all<{ id: number; variant_id: number | null; quantity: number }>();
+      for (const d of results) {
+        statements.push(
+          db.prepare("UPDATE dues SET cancelled_at = ?1, cancelled_by = ?2, cancel_reason = ?3 WHERE id = ?4").bind(nowIso(), me, `Pagamento annullato: ${reason}`, d.id),
+        );
+        const restock = restockStatement(db, d, me, todayIso());
+        if (restock) statements.push(restock);
+      }
+    }
+    await db.batch(statements);
     return c.json(await findPayment(db, id), 200);
   })
   .openapi(methodsRoute, async (c) => {

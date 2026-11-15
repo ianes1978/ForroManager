@@ -28,6 +28,8 @@ const ENTITY_LABELS: Record<string, string> = {
   form: "un modulo",
   member_form: "un modulo di un socio",
   payment_method: "un metodo di pagamento",
+  variant: "una variante di prodotto",
+  stock: "le scorte di magazzino",
 };
 const ACTION_LABELS: Record<string, string> = {
   create: "ha creato",

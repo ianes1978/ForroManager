@@ -12,6 +12,7 @@ import { memberRoutes } from "./routes/members.ts";
 import { paymentRoutes } from "./routes/payments.ts";
 import { productRoutes } from "./routes/products.ts";
 import { reportRoutes } from "./routes/reports.ts";
+import { saleRoutes } from "./routes/sales.ts";
 import { userRoutes } from "./routes/users.ts";
 
 const API_VERSION = "1.0.0";
@@ -39,6 +40,7 @@ app.route("/", memberRoutes);
 app.route("/", productRoutes);
 app.route("/", dueRoutes);
 app.route("/", paymentRoutes);
+app.route("/", saleRoutes);
 app.route("/", reportRoutes);
 app.route("/", formRoutes);
 app.route("/", exportRoutes);

@@ -21,6 +21,8 @@ const statusRoute = createRoute({
             notInRegola: z.number().int(),
             arrearsTotalCents: z.number().int(),
             openChargesTotalCents: z.number().int(),
+            nonMemberOpenCents: z.number().int().openapi({ description: "Vendite a non soci ancora da saldare" }),
+            nonMemberOpenCount: z.number().int(),
             members: z.array(
               z.object({
                 id: z.number().int(),
@@ -56,6 +58,7 @@ const incomeRoute = createRoute({
             byMonth: z.array(z.number().int()).length(12).openapi({ description: "Gennaio..dicembre, per data di pagamento" }),
             byMethod: z.array(z.object({ code: z.string(), label: z.string(), cents: z.number().int() })),
             byKind: z.object({ annuale: z.number().int(), mensile: z.number().int(), prodotto: z.number().int() }),
+            bySource: z.object({ soci: z.number().int(), nonSoci: z.number().int() }).openapi({ description: "Incassi da soci e da vendite a non soci" }),
           })
           .openapi("IncomeReport"),
       ),
@@ -79,6 +82,12 @@ reportRoutes
       .bind(...summaryParams(todayIso()))
       .all<SummaryColumns & { id: number; first_name: string; last_name: string }>();
     const rows = results.map((r) => ({ ...toSummary(r), id: r.id, name: `${r.last_name} ${r.first_name}` }));
+    const open = await c.env.DB.prepare(
+      `SELECT COALESCE(SUM(rest), 0) AS cents, COUNT(*) AS n FROM (
+         SELECT d.amount_cents - COALESCE((SELECT SUM(a.amount_cents) FROM payment_allocations a JOIN payments p ON p.id = a.payment_id
+                                            WHERE a.due_id = d.id AND p.voided_at IS NULL), 0) AS rest
+           FROM dues d WHERE d.member_id IS NULL AND d.cancelled_at IS NULL) WHERE rest > 0`,
+    ).first<{ cents: number; n: number }>();
     const notInRegola = rows.filter((r) => !r.inRegola);
     return c.json(
       {
@@ -87,6 +96,8 @@ reportRoutes
         notInRegola: notInRegola.length,
         arrearsTotalCents: rows.reduce((s, r) => s + r.arrearsCents, 0),
         openChargesTotalCents: rows.reduce((s, r) => s + r.openChargesCents, 0),
+        nonMemberOpenCents: open?.cents ?? 0,
+        nonMemberOpenCount: open?.n ?? 0,
         members: rows
           .filter((r) => !r.inRegola || r.openChargesCents > 0)
           .map((r) => ({ id: r.id, name: r.name, arrearsCents: r.arrearsCents, arrearsCount: r.arrearsCount, openChargesCents: r.openChargesCents })),
@@ -98,7 +109,7 @@ reportRoutes
     const year = c.req.valid("query").year ?? Number(todayIso().slice(0, 4));
     const db = c.env.DB;
     const range = [`${year}-01-01`, `${year}-12-31`];
-    const [byMonth, byMethod, byKind] = await db.batch([
+    const [byMonth, byMethod, byKind, bySource] = await db.batch([
       db
         .prepare(
           `SELECT CAST(substr(paid_on, 6, 2) AS INTEGER) AS month, SUM(amount_cents) AS cents
@@ -120,7 +131,15 @@ reportRoutes
             WHERE p.voided_at IS NULL AND p.paid_on BETWEEN ?1 AND ?2 GROUP BY d.kind`,
         )
         .bind(...range),
+      db
+        .prepare(
+          `SELECT COALESCE(SUM(CASE WHEN member_id IS NOT NULL THEN amount_cents END), 0) AS soci,
+                  COALESCE(SUM(CASE WHEN member_id IS NULL THEN amount_cents END), 0) AS non_soci
+             FROM payments WHERE voided_at IS NULL AND paid_on BETWEEN ?1 AND ?2`,
+        )
+        .bind(...range),
     ]);
+    const source = (bySource!.results as { soci: number; non_soci: number }[])[0] ?? { soci: 0, non_soci: 0 };
     const months = Array.from({ length: 12 }, () => 0);
     for (const r of byMonth!.results as { month: number; cents: number }[]) months[r.month - 1] = r.cents;
     const kinds = { annuale: 0, mensile: 0, prodotto: 0 };
@@ -132,6 +151,7 @@ reportRoutes
         byMonth: months,
         byMethod: (byMethod!.results as { code: string; label: string; cents: number }[]).map((r) => ({ code: r.code, label: r.label, cents: r.cents })),
         byKind: kinds,
+        bySource: { soci: source.soci, nonSoci: source.non_soci },
       },
       200,
     );

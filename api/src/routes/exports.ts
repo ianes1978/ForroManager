@@ -1,5 +1,6 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { SUMMARY_CTE, type SummaryColumns, summaryParams, toSummary } from "../data/summary.ts";
+import { VARIANT_LABEL_SQL } from "../data/dues.ts";
 import { euro, toCsv } from "../lib/csv.ts";
 import { DateSchema, bearer, commonErrors, createRouter } from "../lib/http.ts";
 import { todayIso } from "../lib/time.ts";
@@ -68,27 +69,27 @@ exportRoutes
         .prepare(
           `SELECT p.id, p.paid_on, m.last_name, m.first_name, p.amount_cents, pm.label AS method, p.note, u.name AS recorded_by,
                   p.voided_at, p.void_reason
-             FROM payments p JOIN members m ON m.id = p.member_id JOIN payment_methods pm ON pm.id = p.method_id JOIN users u ON u.id = p.recorded_by
+             FROM payments p LEFT JOIN members m ON m.id = p.member_id JOIN payment_methods pm ON pm.id = p.method_id JOIN users u ON u.id = p.recorded_by
             WHERE p.paid_on BETWEEN ?1 AND ?2 ORDER BY p.paid_on, p.id`,
         )
         .bind(...range),
       db
         .prepare(
-          `SELECT a.payment_id, d.kind, d.year, d.month, pr.name AS product_name
+          `SELECT a.payment_id, d.kind, d.year, d.month, pr.name AS product_name, ${VARIANT_LABEL_SQL} AS variant_label, d.quantity
              FROM payment_allocations a JOIN payments p ON p.id = a.payment_id JOIN dues d ON d.id = a.due_id
-             LEFT JOIN products pr ON pr.id = d.product_id
+             LEFT JOIN products pr ON pr.id = d.product_id LEFT JOIN product_variants v ON v.id = d.variant_id
             WHERE p.paid_on BETWEEN ?1 AND ?2 ORDER BY a.id`,
         )
         .bind(...range),
     ]);
     const byPayment = new Map<number, Parameters<typeof describeAllocations>[0]>();
-    for (const a of allocs!.results as { payment_id: number; kind: "annuale" | "mensile" | "prodotto"; year: number; month: number | null; product_name: string | null }[]) {
+    for (const a of allocs!.results as { payment_id: number; kind: "annuale" | "mensile" | "prodotto"; year: number; month: number | null; product_name: string | null; variant_label: string | null; quantity: number }[]) {
       byPayment.set(a.payment_id, [...(byPayment.get(a.payment_id) ?? []), a]);
     }
     const body = toCsv(
       ["ID", "Data", "Cognome", "Nome", "Importo (€)", "Metodo", "Voci", "Nota", "Registrato da", "Annullato", "Motivo annullamento"],
       (payments!.results as Record<string, string | number | null>[]).map((p) => [
-        p.id, p.paid_on, p.last_name, p.first_name, euro(p.amount_cents as number), p.method,
+        p.id, p.paid_on, p.last_name ?? "Non socio", p.first_name, euro(p.amount_cents as number), p.method,
         describeAllocations(byPayment.get(p.id as number) ?? []), p.note, p.recorded_by, p.voided_at ? "sì" : "no", p.void_reason,
       ]),
     );

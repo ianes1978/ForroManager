@@ -421,6 +421,18 @@
           },
           "active": {
             "type": "boolean"
+          },
+          "tracksStock": {
+            "type": "boolean"
+          },
+          "lowStockThreshold": {
+            "type": "integer"
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductVariant"
+            }
           }
         },
         "required": [
@@ -428,7 +440,92 @@
           "name",
           "type",
           "priceCents",
-          "active"
+          "active",
+          "tracksStock",
+          "lowStockThreshold",
+          "variants"
+        ]
+      },
+      "ProductVariant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "size": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string",
+            "example": "M · nero"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "stock": {
+            "type": "integer",
+            "description": "Pezzi disponibili (può essere negativa se si è venduto oltre la scorta)"
+          },
+          "low": {
+            "type": "boolean",
+            "description": "Scorta pari o inferiore alla soglia del prodotto"
+          }
+        },
+        "required": [
+          "id",
+          "size",
+          "color",
+          "label",
+          "active",
+          "stock",
+          "low"
+        ]
+      },
+      "StockMovement": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "variantLabel": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "carico",
+              "vendita",
+              "reso",
+              "rettifica"
+            ]
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "movedOn": {
+            "type": "string"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "userName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "variantLabel",
+          "kind",
+          "quantity",
+          "movedOn",
+          "note",
+          "userName"
         ]
       },
       "Due": {
@@ -470,6 +567,29 @@
               "null"
             ]
           },
+          "variantId": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "variantLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "M · nero"
+          },
+          "quantity": {
+            "type": "integer"
+          },
+          "buyerName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Solo per vendite a non soci da saldare"
+          },
           "baseAmountCents": {
             "type": "integer"
           },
@@ -509,6 +629,10 @@
           "label",
           "categoryId",
           "productId",
+          "variantId",
+          "variantLabel",
+          "quantity",
+          "buyerName",
           "baseAmountCents",
           "amountCents",
           "adjustmentReason",
@@ -564,6 +688,28 @@
           "suspended"
         ]
       },
+      "Charge": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Due"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "stockAfter": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Scorta rimasta della variante; negativa se si è venduto oltre la scorta"
+              }
+            },
+            "required": [
+              "stockAfter"
+            ]
+          }
+        ]
+      },
       "Payment": {
         "type": "object",
         "properties": {
@@ -571,10 +717,14 @@
             "type": "integer"
           },
           "memberId": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "memberName": {
-            "type": "string"
+            "type": "string",
+            "description": "Nome del socio oppure \"Non socio\""
           },
           "paidOn": {
             "type": "string"
@@ -699,6 +849,30 @@
           "active"
         ]
       },
+      "Sale": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Due"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "stockAfter": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "paymentId": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "StatusReport": {
         "type": "object",
         "properties": {
@@ -715,6 +889,13 @@
             "type": "integer"
           },
           "openChargesTotalCents": {
+            "type": "integer"
+          },
+          "nonMemberOpenCents": {
+            "type": "integer",
+            "description": "Vendite a non soci ancora da saldare"
+          },
+          "nonMemberOpenCount": {
             "type": "integer"
           },
           "members": {
@@ -754,6 +935,8 @@
           "notInRegola",
           "arrearsTotalCents",
           "openChargesTotalCents",
+          "nonMemberOpenCents",
+          "nonMemberOpenCount",
           "members"
         ]
       },
@@ -813,6 +996,22 @@
               "mensile",
               "prodotto"
             ]
+          },
+          "bySource": {
+            "type": "object",
+            "properties": {
+              "soci": {
+                "type": "integer"
+              },
+              "nonSoci": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "soci",
+              "nonSoci"
+            ],
+            "description": "Incassi da soci e da vendite a non soci"
           }
         },
         "required": [
@@ -820,7 +1019,8 @@
           "totalCents",
           "byMonth",
           "byMethod",
-          "byKind"
+          "byKind",
+          "bySource"
         ]
       },
       "Form": {
@@ -2854,7 +3054,7 @@
         "tags": [
           "Prodotti ed eventi"
         ],
-        "summary": "Catalogo di prodotti ed eventi",
+        "summary": "Catalogo con varianti e scorte",
         "security": [
           {
             "Bearer": []
@@ -2940,6 +3140,7 @@
             "Bearer": []
           }
         ],
+        "description": "Con tracksStock il prodotto ha scorte di magazzino per variante; senza varianti indicate ne viene creata una unica.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2964,6 +3165,36 @@
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 10000000
+                  },
+                  "tracksStock": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "lowStockThreshold": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000,
+                    "default": 2
+                  },
+                  "variants": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "size": {
+                          "type": "string",
+                          "maxLength": 20,
+                          "default": ""
+                        },
+                        "color": {
+                          "type": "string",
+                          "maxLength": 30,
+                          "default": ""
+                        }
+                      }
+                    },
+                    "maxItems": 60,
+                    "default": []
                   }
                 },
                 "required": [
@@ -2998,6 +3229,16 @@
           },
           "403": {
             "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
             "content": {
               "application/json": {
                 "schema": {
@@ -3069,6 +3310,14 @@
                   },
                   "active": {
                     "type": "boolean"
+                  },
+                  "tracksStock": {
+                    "type": "boolean"
+                  },
+                  "lowStockThreshold": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000
                   }
                 }
               }
@@ -3108,6 +3357,519 @@
           },
           "404": {
             "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products/{id}/variants": {
+      "post": {
+        "tags": [
+          "Magazzino"
+        ],
+        "summary": "Aggiunge una variante (taglia, colore)",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "example": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "size": {
+                    "type": "string",
+                    "maxLength": 20,
+                    "default": ""
+                  },
+                  "color": {
+                    "type": "string",
+                    "maxLength": 30,
+                    "default": ""
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Prodotto aggiornato",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/variants/{variantId}": {
+      "patch": {
+        "tags": [
+          "Magazzino"
+        ],
+        "summary": "Disattiva o riattiva una variante",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "variantId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "active": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "active"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Prodotto aggiornato",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/variants/{variantId}/stock": {
+      "post": {
+        "tags": [
+          "Magazzino"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "summary": "Carico di merce o rettifica dopo un conteggio",
+        "description": "carico: aggiunge 'quantity' pezzi. rettifica: porta la scorta esattamente a 'quantity' (pezzi contati).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "variantId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "carico",
+                      "rettifica"
+                    ]
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100000
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "movedOn": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2026-11-15"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "quantity"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Prodotto aggiornato",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/products/{id}/movements": {
+      "get": {
+        "tags": [
+          "Magazzino"
+        ],
+        "summary": "Movimenti di magazzino del prodotto (più recenti prima)",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "example": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Movimenti",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/StockMovement"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stock": {
+      "get": {
+        "tags": [
+          "Magazzino"
+        ],
+        "summary": "Scorte di tutte le varianti attive",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "default": "false",
+              "description": "Solo scorte basse o esaurite"
+            },
+            "required": false,
+            "description": "Solo scorte basse o esaurite",
+            "name": "low",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scorte",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "productId": {
+                            "type": "integer"
+                          },
+                          "productName": {
+                            "type": "string"
+                          },
+                          "variantId": {
+                            "type": "integer"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "stock": {
+                            "type": "integer"
+                          },
+                          "low": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "productId",
+                          "productName",
+                          "variantId",
+                          "label",
+                          "stock",
+                          "low"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
             "content": {
               "application/json": {
                 "schema": {
@@ -3567,10 +4329,22 @@
                     "type": "integer",
                     "exclusiveMinimum": 0
                   },
+                  "variantId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "description": "Obbligatoria per i prodotti con scorte"
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 99,
+                    "default": 1
+                  },
                   "amountCents": {
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 10000000
+                    "maximum": 10000000,
+                    "description": "Totale; se diverso da prezzo × quantità serve il motivo"
                   },
                   "reason": {
                     "type": "string",
@@ -3595,7 +4369,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Due"
+                  "$ref": "#/components/schemas/Charge"
                 }
               }
             }
@@ -4336,6 +5110,443 @@
           },
           "404": {
             "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sales": {
+      "post": {
+        "tags": [
+          "Vendite a non soci"
+        ],
+        "summary": "Vendita a un non socio, pagata subito o da saldare",
+        "description": "Con 'payment' la vendita è pagata subito per intero e non si registra alcun nome. Senza, 'buyerName' è obbligatorio.",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "productId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "variantId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 99,
+                    "default": 1
+                  },
+                  "amountCents": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000000
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "chargedOn": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2026-11-15"
+                  },
+                  "buyerName": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "payment": {
+                    "type": "object",
+                    "properties": {
+                      "method": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 30
+                      },
+                      "paidOn": {
+                        "type": "string",
+                        "format": "date",
+                        "example": "2026-11-15"
+                      }
+                    },
+                    "required": [
+                      "method"
+                    ]
+                  }
+                },
+                "required": [
+                  "productId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Vendita registrata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sale"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Vendite a non soci"
+        ],
+        "summary": "Vendite a non soci (le più recenti prima)",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "aperte",
+                "tutte"
+              ],
+              "default": "aperte",
+              "description": "aperte = da saldare"
+            },
+            "required": false,
+            "description": "aperte = da saldare",
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Vendite",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Due"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sales/{id}/pay": {
+      "post": {
+        "tags": [
+          "Vendite a non soci"
+        ],
+        "summary": "Incassa una vendita a non socio rimasta da saldare",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "example": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 30
+                  },
+                  "paidOn": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2026-11-15"
+                  },
+                  "amountCents": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000000,
+                    "description": "Predefinito: tutto il rimanente"
+                  }
+                },
+                "required": [
+                  "method"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Vendita aggiornata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Sale"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sales/{id}/cancel": {
+      "post": {
+        "tags": [
+          "Vendite a non soci"
+        ],
+        "summary": "Annulla una vendita non pagata (la merce torna in magazzino)",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "example": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Vendita annullata"
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
             "content": {
               "application/json": {
                 "schema": {
