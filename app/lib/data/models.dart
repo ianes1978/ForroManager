@@ -137,6 +137,9 @@ class Due {
     required this.label,
     this.categoryId,
     this.productId,
+    this.variantLabel,
+    this.quantity = 1,
+    this.buyerName,
     required this.baseAmountCents,
     required this.amountCents,
     this.adjustmentReason,
@@ -153,6 +156,9 @@ class Due {
         label: j['label'] as String,
         categoryId: j['categoryId'] as int?,
         productId: j['productId'] as int?,
+        variantLabel: j['variantLabel'] as String?,
+        quantity: (j['quantity'] as int?) ?? 1,
+        buyerName: j['buyerName'] as String?,
         baseAmountCents: j['baseAmountCents'] as int,
         amountCents: j['amountCents'] as int,
         adjustmentReason: j['adjustmentReason'] as String?,
@@ -168,6 +174,9 @@ class Due {
   final String label;
   final int? categoryId;
   final int? productId;
+  final String? variantLabel;
+  final int quantity;
+  final String? buyerName;
   final int baseAmountCents;
   final int amountCents;
   final String? adjustmentReason;
@@ -204,7 +213,7 @@ class PaymentAllocation {
 class Payment {
   Payment({
     required this.id,
-    required this.memberId,
+    this.memberId,
     required this.memberName,
     required this.paidOn,
     required this.amountCents,
@@ -220,7 +229,7 @@ class Payment {
   });
   factory Payment.fromJson(Json j) => Payment(
         id: j['id'] as int,
-        memberId: j['memberId'] as int,
+        memberId: j['memberId'] as int?,
         memberName: j['memberName'] as String,
         paidOn: j['paidOn'] as String,
         amountCents: j['amountCents'] as int,
@@ -235,7 +244,7 @@ class Payment {
         description: j['description'] as String,
       );
   final int id;
-  final int memberId;
+  final int? memberId;
   final String memberName;
   final String paidOn;
   final int amountCents;
@@ -284,20 +293,58 @@ class Fee {
       };
 }
 
+class ProductVariant {
+  ProductVariant({required this.id, required this.size, required this.color, required this.label, required this.active, required this.stock, required this.low});
+  factory ProductVariant.fromJson(Json j) => ProductVariant(
+        id: j['id'] as int,
+        size: j['size'] as String,
+        color: j['color'] as String,
+        label: j['label'] as String,
+        active: j['active'] as bool,
+        stock: j['stock'] as int,
+        low: j['low'] as bool,
+      );
+  final int id;
+  final String size;
+  final String color;
+  final String label;
+  final bool active;
+  final int stock;
+  final bool low;
+}
+
 class Product {
-  Product({required this.id, required this.name, required this.type, required this.priceCents, required this.active});
+  Product({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.priceCents,
+    required this.active,
+    this.tracksStock = false,
+    this.lowStockThreshold = 2,
+    this.variants = const [],
+  });
   factory Product.fromJson(Json j) => Product(
         id: j['id'] as int,
         name: j['name'] as String,
         type: j['type'] as String,
         priceCents: j['priceCents'] as int,
         active: j['active'] as bool,
+        tracksStock: (j['tracksStock'] as bool?) ?? false,
+        lowStockThreshold: (j['lowStockThreshold'] as int?) ?? 2,
+        variants: [for (final v in (j['variants'] as List?) ?? const []) ProductVariant.fromJson(v as Json)],
       );
   final int id;
   final String name;
   final String type;
   final int priceCents;
   final bool active;
+  final bool tracksStock;
+  final int lowStockThreshold;
+  final List<ProductVariant> variants;
+
+  int get totalStock => variants.where((v) => v.active).fold(0, (s, v) => s + v.stock);
+  bool get hasLowStock => variants.any((v) => v.low);
 
   String get typeLabel => switch (type) {
         'stage' => 'Stage',
@@ -362,6 +409,8 @@ class StatusReport {
     required this.notInRegola,
     required this.arrearsTotalCents,
     required this.openChargesTotalCents,
+    this.nonMemberOpenCents = 0,
+    this.nonMemberOpenCount = 0,
     required this.members,
   });
   factory StatusReport.fromJson(Json j) => StatusReport(
@@ -370,6 +419,8 @@ class StatusReport {
         notInRegola: j['notInRegola'] as int,
         arrearsTotalCents: j['arrearsTotalCents'] as int,
         openChargesTotalCents: j['openChargesTotalCents'] as int,
+        nonMemberOpenCents: (j['nonMemberOpenCents'] as int?) ?? 0,
+        nonMemberOpenCount: (j['nonMemberOpenCount'] as int?) ?? 0,
         members: [
           for (final m in j['members'] as List)
             StatusMember((m as Json)['id'] as int, m['name'] as String, m['arrearsCents'] as int, m['arrearsCount'] as int,
@@ -381,6 +432,8 @@ class StatusReport {
   final int notInRegola;
   final int arrearsTotalCents;
   final int openChargesTotalCents;
+  final int nonMemberOpenCents;
+  final int nonMemberOpenCount;
   final List<StatusMember> members;
 }
 
@@ -394,19 +447,23 @@ class StatusMember {
 }
 
 class IncomeReport {
-  IncomeReport({required this.year, required this.totalCents, required this.byMonth, required this.byMethod, required this.byKind});
+  IncomeReport({required this.year, required this.totalCents, required this.byMonth, required this.byMethod, required this.byKind, this.membersCents = 0, this.nonMembersCents = 0});
   factory IncomeReport.fromJson(Json j) => IncomeReport(
         year: j['year'] as int,
         totalCents: j['totalCents'] as int,
         byMonth: [for (final v in j['byMonth'] as List) v as int],
         byMethod: [for (final m in j['byMethod'] as List) ((m as Json)['label'] as String, m['cents'] as int)],
         byKind: {for (final e in (j['byKind'] as Json).entries) e.key: e.value as int},
+        membersCents: ((j['bySource'] as Json?)?['soci'] as int?) ?? 0,
+        nonMembersCents: ((j['bySource'] as Json?)?['nonSoci'] as int?) ?? 0,
       );
   final int year;
   final int totalCents;
   final List<int> byMonth;
   final List<(String, int)> byMethod;
   final Map<String, int> byKind;
+  final int membersCents;
+  final int nonMembersCents;
 }
 
 class AuditEntry {
@@ -455,4 +512,42 @@ class NewMonthItem extends PayItem {
   final int month;
   @override
   Json toJson() => {'year': year, 'month': month};
+}
+
+class StockMovement {
+  StockMovement({required this.id, required this.variantLabel, required this.kind, required this.quantity, required this.movedOn, this.note, required this.userName});
+  factory StockMovement.fromJson(Json j) => StockMovement(
+        id: j['id'] as int,
+        variantLabel: j['variantLabel'] as String,
+        kind: j['kind'] as String,
+        quantity: j['quantity'] as int,
+        movedOn: j['movedOn'] as String,
+        note: j['note'] as String?,
+        userName: j['userName'] as String,
+      );
+  final int id;
+  final String variantLabel;
+  final String kind; // carico | vendita | reso | rettifica
+  final int quantity;
+  final String movedOn;
+  final String? note;
+  final String userName;
+}
+
+class StockItem {
+  StockItem({required this.productId, required this.productName, required this.variantId, required this.label, required this.stock, required this.low});
+  factory StockItem.fromJson(Json j) => StockItem(
+        productId: j['productId'] as int,
+        productName: j['productName'] as String,
+        variantId: j['variantId'] as int,
+        label: j['label'] as String,
+        stock: j['stock'] as int,
+        low: j['low'] as bool,
+      );
+  final int productId;
+  final String productName;
+  final int variantId;
+  final String label;
+  final int stock;
+  final bool low;
 }

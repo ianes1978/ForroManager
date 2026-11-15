@@ -52,8 +52,17 @@ class Repository {
   Future<Due> adjustDue(int id, int amountCents, String? reason) async =>
       Due.fromJson(await api.post('/dues/$id/adjust', {'amountCents': amountCents, 'reason': ?reason}) as Json);
   Future<void> cancelDue(int id, String reason) => api.post('/dues/$id/cancel', {'reason': reason});
-  Future<Due> chargeProduct(int memberId, int productId, {int? amountCents, String? reason}) async => Due.fromJson(
-      await api.post('/members/$memberId/charges', {'productId': productId, 'amountCents': ?amountCents, 'reason': ?reason}) as Json);
+  /// Addebita un prodotto a un socio. Restituisce la quota e la scorta rimasta (null se senza scorte).
+  Future<(Due, int?)> chargeProduct(int memberId, int productId, {int? variantId, int quantity = 1, int? amountCents, String? reason}) async {
+    final res = await api.post('/members/$memberId/charges', {
+      'productId': productId,
+      'variantId': ?variantId,
+      'quantity': quantity,
+      'amountCents': ?amountCents,
+      'reason': ?reason,
+    }) as Json;
+    return (Due.fromJson(res), res['stockAfter'] as int?);
+  }
 
   // Tariffe ------------------------------------------------------------------
   Future<List<Fee>> fees(int year) async => _items(await api.get('/fees', query: {'year': year}), Fee.fromJson);
@@ -70,10 +79,65 @@ class Repository {
   // Prodotti -----------------------------------------------------------------
   Future<List<Product>> products({bool includeInactive = false}) async =>
       _items(await api.get('/products', query: {'active': includeInactive ? 'tutti' : 'true'}), Product.fromJson);
-  Future<void> createProduct(String name, String type, int priceCents) =>
-      api.post('/products', {'name': name, 'type': type, 'priceCents': priceCents});
-  Future<void> updateProduct(int id, {String? name, String? type, int? priceCents, bool? active}) =>
-      api.patch('/products/$id', {'name': ?name, 'type': ?type, 'priceCents': ?priceCents, 'active': ?active});
+  Future<Product> createProduct(String name, String type, int priceCents,
+          {bool tracksStock = false, int? lowStockThreshold, List<(String, String)> variants = const []}) async =>
+      Product.fromJson(await api.post('/products', {
+        'name': name,
+        'type': type,
+        'priceCents': priceCents,
+        'tracksStock': tracksStock,
+        'lowStockThreshold': ?lowStockThreshold,
+        'variants': [for (final (size, color) in variants) {'size': size, 'color': color}],
+      }) as Json);
+  Future<Product> updateProduct(int id, {String? name, String? type, int? priceCents, bool? active, bool? tracksStock, int? lowStockThreshold}) async =>
+      Product.fromJson(await api.patch('/products/$id', {
+        'name': ?name,
+        'type': ?type,
+        'priceCents': ?priceCents,
+        'active': ?active,
+        'tracksStock': ?tracksStock,
+        'lowStockThreshold': ?lowStockThreshold,
+      }) as Json);
+  Future<Product> addVariant(int productId, String size, String color) async =>
+      Product.fromJson(await api.post('/products/$productId/variants', {'size': size, 'color': color}) as Json);
+  Future<Product> setVariantActive(int variantId, bool active) async =>
+      Product.fromJson(await api.patch('/variants/$variantId', {'active': active}) as Json);
+
+  /// kind: 'carico' (aggiunge pezzi) o 'rettifica' (porta la scorta al valore contato).
+  Future<Product> moveStock(int variantId, String kind, int quantity, {String? note}) async =>
+      Product.fromJson(await api.post('/variants/$variantId/stock', {'kind': kind, 'quantity': quantity, 'note': ?note}) as Json);
+  Future<List<StockMovement>> stockMovements(int productId) async =>
+      _items(await api.get('/products/$productId/movements'), StockMovement.fromJson);
+  Future<List<StockItem>> stock({bool onlyLow = false}) async =>
+      _items(await api.get('/stock', query: {'low': onlyLow ? 'true' : 'false'}), StockItem.fromJson);
+
+  // Vendite a non soci ------------------------------------------------------
+  /// Con [payNowMethod] la vendita è pagata subito (nessun nome salvato); altrimenti serve [buyerName].
+  Future<(Due, int?)> createSale({
+    required int productId,
+    int? variantId,
+    int quantity = 1,
+    int? amountCents,
+    String? reason,
+    String? buyerName,
+    String? payNowMethod,
+  }) async {
+    final res = await api.post('/sales', {
+      'productId': productId,
+      'variantId': ?variantId,
+      'quantity': quantity,
+      'amountCents': ?amountCents,
+      'reason': ?reason,
+      'buyerName': ?buyerName,
+      if (payNowMethod != null) 'payment': {'method': payNowMethod},
+    }) as Json;
+    return (Due.fromJson(res), res['stockAfter'] as int?);
+  }
+
+  Future<List<Due>> openSales() async => _items(await api.get('/sales', query: {'status': 'aperte'}), Due.fromJson);
+  Future<void> paySale(int saleId, String method, {int? amountCents}) =>
+      api.post('/sales/$saleId/pay', {'method': method, 'amountCents': ?amountCents});
+  Future<void> cancelSale(int saleId, String reason) => api.post('/sales/$saleId/cancel', {'reason': reason});
 
   // Pagamenti ----------------------------------------------------------------
   Future<List<Payment>> payments({String? from, String? to, int? memberId, String? method}) async => _items(

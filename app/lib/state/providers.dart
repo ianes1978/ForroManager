@@ -110,6 +110,18 @@ final feesProvider = FutureProvider.autoDispose.family<List<Fee>, int>((ref, yea
 final productsProvider =
     FutureProvider.autoDispose.family<List<Product>, bool>((ref, all) => ref.watch(repositoryProvider).products(includeInactive: all));
 
+final productProvider = FutureProvider.autoDispose.family<Product, int>((ref, id) async {
+  final all = await ref.watch(repositoryProvider).products(includeInactive: true);
+  return all.firstWhere((p) => p.id == id);
+});
+
+final stockMovementsProvider =
+    FutureProvider.autoDispose.family<List<StockMovement>, int>((ref, id) => ref.watch(repositoryProvider).stockMovements(id));
+
+final lowStockProvider = FutureProvider.autoDispose<List<StockItem>>((ref) => ref.watch(repositoryProvider).stock(onlyLow: true));
+
+final openSalesProvider = FutureProvider.autoDispose<List<Due>>((ref) => ref.watch(repositoryProvider).openSales());
+
 final formsProvider = FutureProvider.autoDispose<List<FormDef>>((ref) => ref.watch(repositoryProvider).forms());
 
 final formMembersProvider =
@@ -138,6 +150,10 @@ void invalidateData(WidgetRef ref) {
     incomeReportProvider,
     feesProvider,
     productsProvider,
+    productProvider,
+    stockMovementsProvider,
+    lowStockProvider,
+    openSalesProvider,
     formsProvider,
     formMembersProvider,
     usersProvider,
