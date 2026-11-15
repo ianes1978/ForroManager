@@ -53,9 +53,24 @@ class FakeRepository extends Repository {
   Map<String, Object?>? lastPayment;
   Map<String, Object?>? lastSale;
   List<Product> productsList = [];
+  List<Course> coursesList = [];
+  final enrollCalls = <(int, List<int>?, int?)>[];
   final paymentKeys = <String?>[];
   final saleKeys = <String?>[];
   bool failNextPaymentWithNetwork = false;
+
+  @override
+  Future<List<Course>> courses({int? year}) async => coursesList;
+
+  @override
+  Future<(CoursePeriod, List<Enrollment>)> enrollments(int periodId) async =>
+      (coursesList.expand((c) => c.periods).firstWhere((p) => p.id == periodId), <Enrollment>[]);
+
+  @override
+  Future<(int, int)> enroll(int periodId, {List<int>? memberIds, int? renewFromPeriodId}) async {
+    enrollCalls.add((periodId, memberIds, renewFromPeriodId));
+    return (memberIds?.length ?? 3, 0);
+  }
 
   @override
   Future<List<Product>> products({bool includeInactive = false}) async => productsList;

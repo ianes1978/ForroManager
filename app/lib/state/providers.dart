@@ -126,6 +126,12 @@ final lowStockProvider = FutureProvider.autoDispose<List<StockItem>>((ref) => re
 
 final openSalesProvider = FutureProvider.autoDispose<List<Due>>((ref) => ref.watch(repositoryProvider).openSales());
 
+final coursesProvider =
+    FutureProvider.autoDispose.family<List<Course>, int?>((ref, year) => ref.watch(repositoryProvider).courses(year: year));
+
+final enrollmentsProvider = FutureProvider.autoDispose.family<(CoursePeriod, List<Enrollment>), int>(
+    (ref, periodId) => ref.watch(repositoryProvider).enrollments(periodId));
+
 final formsProvider = FutureProvider.autoDispose<List<FormDef>>((ref) => ref.watch(repositoryProvider).forms());
 
 final formMembersProvider =
@@ -155,6 +161,8 @@ void invalidateData(WidgetRef ref) {
     feesProvider,
     productsProvider,
     productProvider,
+    coursesProvider,
+    enrollmentsProvider,
     stockMovementsProvider,
     lowStockProvider,
     openSalesProvider,

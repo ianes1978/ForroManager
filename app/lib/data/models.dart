@@ -143,6 +143,7 @@ class Due {
     this.month,
     required this.label,
     this.categoryId,
+    this.coursePeriodId,
     this.productId,
     this.variantLabel,
     this.quantity = 1,
@@ -162,6 +163,7 @@ class Due {
         month: j['month'] as int?,
         label: j['label'] as String,
         categoryId: j['categoryId'] as int?,
+        coursePeriodId: j['coursePeriodId'] as int?,
         productId: j['productId'] as int?,
         variantLabel: j['variantLabel'] as String?,
         quantity: (j['quantity'] as int?) ?? 1,
@@ -175,11 +177,12 @@ class Due {
         chargedOn: j['chargedOn'] as String,
       );
   final int id;
-  final String kind; // annuale | mensile | prodotto
+  final String kind; // annuale | mensile | periodo | prodotto
   final int year;
   final int? month;
   final String label;
   final int? categoryId;
+  final int? coursePeriodId;
   final int? productId;
   final String? variantLabel;
   final int quantity;
@@ -569,4 +572,85 @@ class StockItem {
   final String label;
   final int stock;
   final bool low;
+}
+
+class CoursePeriod {
+  CoursePeriod({
+    required this.id,
+    required this.courseId,
+    required this.courseName,
+    required this.name,
+    required this.label,
+    required this.from,
+    required this.to,
+    required this.months,
+    required this.amountCents,
+    required this.active,
+    required this.enrolled,
+    required this.paid,
+    this.updatedAt,
+  });
+  factory CoursePeriod.fromJson(Json j) => CoursePeriod(
+        id: j['id'] as int,
+        courseId: j['courseId'] as int,
+        courseName: j['courseName'] as String,
+        name: j['name'] as String,
+        label: j['label'] as String,
+        from: j['from'] as String,
+        to: j['to'] as String,
+        months: j['months'] as int,
+        amountCents: j['amountCents'] as int,
+        active: j['active'] as bool,
+        enrolled: j['enrolled'] as int,
+        paid: j['paid'] as int,
+        updatedAt: j['updatedAt'] as String?,
+      );
+  final int id;
+  final int courseId;
+  final String courseName;
+  final String name;
+  final String label;
+  final String from; // AAAA-MM
+  final String to;
+  final int months;
+  final int amountCents;
+  final bool active;
+  final int enrolled;
+  final int paid;
+  final String? updatedAt;
+
+  /// Il periodo non è ancora finito (rispetto al mese indicato, AAAA-MM).
+  bool notEndedAt(String yearMonth) => to.compareTo(yearMonth) >= 0;
+}
+
+class Course {
+  Course({required this.id, required this.name, required this.active, required this.periods});
+  factory Course.fromJson(Json j) => Course(
+        id: j['id'] as int,
+        name: j['name'] as String,
+        active: j['active'] as bool,
+        periods: [for (final p in j['periods'] as List) CoursePeriod.fromJson(p as Json)],
+      );
+  final int id;
+  final String name;
+  final bool active;
+  final List<CoursePeriod> periods;
+}
+
+class Enrollment {
+  Enrollment({required this.dueId, required this.memberId, required this.memberName, required this.amountCents, required this.paidCents, this.adjustmentReason});
+  factory Enrollment.fromJson(Json j) => Enrollment(
+        dueId: j['dueId'] as int,
+        memberId: j['memberId'] as int,
+        memberName: j['memberName'] as String,
+        amountCents: j['amountCents'] as int,
+        paidCents: j['paidCents'] as int,
+        adjustmentReason: j['adjustmentReason'] as String?,
+      );
+  final int dueId;
+  final int memberId;
+  final String memberName;
+  final int amountCents;
+  final int paidCents;
+  final String? adjustmentReason;
 }

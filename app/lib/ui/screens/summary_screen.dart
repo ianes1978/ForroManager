@@ -111,6 +111,7 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                 const SectionTitle('Per voce'),
                 ListTile(dense: true, title: const Text('Quote associative'), trailing: Text(euro(r.byKind['annuale'] ?? 0))),
                 ListTile(dense: true, title: const Text('Quote mensili'), trailing: Text(euro(r.byKind['mensile'] ?? 0))),
+                ListTile(dense: true, title: const Text('Corsi (periodi)'), trailing: Text(euro(r.byKind['periodo'] ?? 0))),
                 ListTile(dense: true, title: const Text('Prodotti ed eventi'), trailing: Text(euro(r.byKind['prodotto'] ?? 0))),
               ]);
             },

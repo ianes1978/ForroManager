@@ -20,7 +20,8 @@ class MoreScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Altro')),
       body: ListView(children: [
-        item(Icons.euro_symbol, 'Tariffe e quote', 'Importi per anno e generazione delle quote', '/altro/tariffe'),
+        item(Icons.school_outlined, 'Corsi e periodi', 'Forró, Zouk...: trimestri, quadrimestri, iscrizioni', '/altro/corsi'),
+        item(Icons.euro_symbol, 'Tessera e quote mensili', 'Importi per anno e generazione delle quote', '/altro/tariffe'),
         item(Icons.shopping_bag_outlined, 'Prodotti ed eventi', 'Magliette, stage, serate e prezzi', '/altro/prodotti'),
         item(Icons.assignment_outlined, 'Moduli', 'Consegnati agli allievi e restituiti firmati', '/altro/moduli'),
         item(Icons.payments_outlined, 'Metodi di pagamento', 'Contanti, bonifico, PayPal...', '/altro/metodi'),

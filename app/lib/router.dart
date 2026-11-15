@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'state/providers.dart';
 import 'ui/screens/audit_screen.dart';
 import 'ui/screens/collect_screen.dart';
+import 'ui/screens/courses_screen.dart';
 import 'ui/screens/export_screen.dart';
 import 'ui/screens/fees_screen.dart';
 import 'ui/screens/forms_screen.dart';
@@ -83,6 +84,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, s) => PaymentDetailScreen(paymentId: int.parse(s.pathParameters['id']!)),
       ),
       GoRoute(path: '/altro/tariffe', builder: (_, _) => const FeesScreen()),
+      GoRoute(path: '/altro/corsi', builder: (_, _) => const CoursesScreen()),
+      GoRoute(
+        path: '/altro/corsi/periodo/:id',
+        builder: (_, s) => PeriodScreen(periodId: int.parse(s.pathParameters['id']!)),
+      ),
       GoRoute(path: '/altro/prodotti', builder: (_, _) => const ProductsScreen()),
       GoRoute(
         path: '/altro/prodotti/:id',

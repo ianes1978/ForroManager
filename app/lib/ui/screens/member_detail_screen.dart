@@ -6,6 +6,7 @@ import '../../core/format.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
 import '../widgets/common.dart';
+import 'courses_screen.dart';
 
 class MemberDetailScreen extends ConsumerStatefulWidget {
   const MemberDetailScreen({super.key, required this.memberId});
@@ -158,6 +159,15 @@ class _DuesSection extends ConsumerWidget {
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (quotes.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Nessuna quota per questo anno.')),
             for (final due in quotes) _DueTile(member: member, due: due),
+            if (member.active)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: OutlinedButton.icon(
+                  onPressed: () => showEnrollMemberSheet(context, ref, member.id),
+                  icon: const Icon(Icons.school_outlined),
+                  label: const Text('Iscrivi a un corso'),
+                ),
+              ),
             const SectionTitle('Prodotti ed eventi'),
             if (products.isEmpty) const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('Nessun prodotto o evento.')),
             for (final due in products) _DueTile(member: member, due: due),

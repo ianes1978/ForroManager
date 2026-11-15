@@ -206,7 +206,7 @@ class _PickDues extends ConsumerWidget {
           }
         }
         choices.sort((a, b) {
-          int rank(_Choice c) => c.kind == 'annuale' ? 0 : c.kind == 'mensile' ? 1 : 2;
+          int rank(_Choice c) => c.kind == 'annuale' ? 0 : c.kind == 'prodotto' ? 2 : 1;
           if (rank(a) != rank(b)) return rank(a) - rank(b);
           if (a.year != b.year) return a.year - b.year;
           return (a.month ?? 0) - (b.month ?? 0);

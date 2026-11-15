@@ -78,6 +78,32 @@ class Repository {
   Future<void> updateFeeCategory(int id, {String? name, bool? active}) =>
       api.patch('/fee-categories/$id', {'name': ?name, 'active': ?active});
 
+  // Corsi e periodi ---------------------------------------------------------
+  Future<List<Course>> courses({int? year}) async => _items(await api.get('/courses', query: {'year': year}), Course.fromJson);
+  Future<void> createCourse(String name) => api.post('/courses', {'name': name});
+  Future<void> updateCourse(int id, {String? name, bool? active}) => api.patch('/courses/$id', {'name': ?name, 'active': ?active});
+  Future<CoursePeriod> createPeriod(int courseId, String from, String to, int amountCents, {String? name}) async =>
+      CoursePeriod.fromJson(await api.post('/courses/$courseId/periods', {'from': from, 'to': to, 'amountCents': amountCents, 'name': ?name}) as Json);
+
+  /// Restituisce quante iscrizioni non ancora pagate hanno preso il nuovo prezzo.
+  Future<int> updatePeriod(int periodId, {String? name, int? amountCents, bool? active, bool applyToUnpaid = false, String? version}) async {
+    final res = await api.patch('/course-periods/$periodId',
+        {'name': ?name, 'amountCents': ?amountCents, 'active': ?active, 'applyToUnpaid': applyToUnpaid}, version: version) as Json;
+    return res['updatedDues'] as int;
+  }
+
+  Future<(CoursePeriod, List<Enrollment>)> enrollments(int periodId) async {
+    final res = await api.get('/course-periods/$periodId/enrollments') as Json;
+    return (CoursePeriod.fromJson(res['period'] as Json), [for (final e in res['items'] as List) Enrollment.fromJson(e as Json)]);
+  }
+
+  /// Iscrive i soci indicati, oppure gli iscritti di [renewFromPeriodId]. Restituisce (iscritti, già iscritti).
+  Future<(int, int)> enroll(int periodId, {List<int>? memberIds, int? renewFromPeriodId}) async {
+    final res = await api.post('/course-periods/$periodId/enroll',
+        memberIds != null ? {'memberIds': memberIds} : {'renewFromPeriodId': renewFromPeriodId}) as Json;
+    return (res['enrolled'] as int, res['alreadyEnrolled'] as int);
+  }
+
   // Prodotti -----------------------------------------------------------------
   Future<List<Product>> products({bool includeInactive = false}) async =>
       _items(await api.get('/products', query: {'active': includeInactive ? 'tutti' : 'true'}), Product.fromJson);
