@@ -1046,6 +1046,139 @@
           }
         ]
       },
+      "FullReport": {
+        "type": "object",
+        "properties": {
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "generatedAt": {
+            "type": "string"
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "dues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "payments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "sales": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          "stock": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "required": [
+          "year",
+          "generatedAt",
+          "members",
+          "dues",
+          "payments",
+          "sales",
+          "stock"
+        ]
+      },
       "StatusReport": {
         "type": "object",
         "properties": {
@@ -6575,6 +6708,77 @@
           },
           "409": {
             "description": "Conflitto con lo stato attuale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/full": {
+      "get": {
+        "tags": [
+          "Riepilogo"
+        ],
+        "summary": "Dati completi per il report Excel (di un anno o di tutto lo storico)",
+        "description": "Soci con situazione, quote e iscrizioni, pagamenti con le voci, vendite e movimenti di magazzino. Importi in centesimi.",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 2000,
+              "maximum": 2100,
+              "example": 2026,
+              "description": "Senza anno: tutto lo storico"
+            },
+            "required": false,
+            "description": "Senza anno: tutto lo storico",
+            "name": "year",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dati del report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FullReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
             "content": {
               "application/json": {
                 "schema": {

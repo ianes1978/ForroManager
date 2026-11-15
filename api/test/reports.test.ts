@@ -128,3 +128,18 @@ describe("registro modifiche", () => {
     expect(older.items[0]!.id).toBeLessThan(res.items[4]!.id);
   });
 });
+
+describe("report completo", () => {
+  it("restituisce soci, quote, pagamenti, vendite e magazzino dell'anno", async () => {
+    const r = (await (await api(`/reports/full?year=${YEAR}`, { token })).json()) as {
+      year: number; members: Record<string, unknown>[]; dues: Record<string, unknown>[]; payments: Record<string, unknown>[]; sales: Record<string, unknown>[];
+    };
+    expect(r.year).toBe(YEAR);
+    expect(r.members.find((m) => m.cognome === "Ritardatario")).toMatchObject({ inRegola: false, arretratiCents: 5500 });
+    expect(r.dues.some((d) => d.socio === "Puntuale Test" && d.stato === "pagata")).toBe(true);
+    expect(r.payments[0]).toMatchObject({ socio: "Puntuale Test", metodo: "Bonifico", importoCents: 5500, annullato: false });
+    expect(r.sales[0]).toMatchObject({ prodotto: "Maglietta", daSaldareCents: 1500 });
+    const all = (await (await api("/reports/full", { token })).json()) as { year: number | null };
+    expect(all.year).toBeNull();
+  });
+});
