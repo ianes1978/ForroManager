@@ -2,12 +2,16 @@ import { HTTPException } from "hono/http-exception";
 import { cors } from "hono/cors";
 import { ApiError } from "./lib/errors.ts";
 import { createRouter } from "./lib/http.ts";
+import { auditRoutes } from "./routes/audit.ts";
 import { authRoutes } from "./routes/auth.ts";
 import { dueRoutes } from "./routes/dues.ts";
+import { exportRoutes } from "./routes/exports.ts";
 import { feeRoutes } from "./routes/fees.ts";
+import { formRoutes } from "./routes/forms.ts";
 import { memberRoutes } from "./routes/members.ts";
 import { paymentRoutes } from "./routes/payments.ts";
 import { productRoutes } from "./routes/products.ts";
+import { reportRoutes } from "./routes/reports.ts";
 import { userRoutes } from "./routes/users.ts";
 
 const API_VERSION = "1.0.0";
@@ -35,6 +39,10 @@ app.route("/", memberRoutes);
 app.route("/", productRoutes);
 app.route("/", dueRoutes);
 app.route("/", paymentRoutes);
+app.route("/", reportRoutes);
+app.route("/", formRoutes);
+app.route("/", exportRoutes);
+app.route("/", auditRoutes);
 
 app.doc31("/openapi.json", {
   openapi: "3.1.0",
