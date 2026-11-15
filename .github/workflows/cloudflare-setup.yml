@@ -1,0 +1,48 @@
+# Preparazione una tantum dell'account Cloudflare (da avviare a mano da Actions).
+# Crea il database D1 "forromanager-db" con giurisdizione europea (GDPR), se non esiste.
+# La giurisdizione si può scegliere solo alla creazione.
+#
+# Richiede i secret del repository:
+#   CLOUDFLARE_API_TOKEN  token con permessi "Workers Scripts: Edit" e "D1: Edit"
+#   CLOUDFLARE_ACCOUNT_ID id dell'account Cloudflare
+# Al termine, copia l'id del database nella variabile del repository D1_DATABASE_ID.
+name: Cloudflare - preparazione
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - name: Crea il database D1 in UE (se non esiste)
+        run: |
+          set -euo pipefail
+          existing=$(npx wrangler d1 list --json | node -e 'const l=JSON.parse(require("fs").readFileSync(0));const d=l.find(x=>x.name==="forromanager-db");console.log(d?d.uuid:"")')
+          if [ -z "$existing" ]; then
+            npx wrangler d1 create forromanager-db --jurisdiction=eu
+            existing=$(npx wrangler d1 list --json | node -e 'const l=JSON.parse(require("fs").readFileSync(0));console.log(l.find(x=>x.name==="forromanager-db").uuid)')
+          fi
+          {
+            echo "### Database D1 pronto"
+            echo ""
+            echo "Copia questo valore nella variabile del repository **D1_DATABASE_ID**:"
+            echo ""
+            echo "\`$existing\`"
+          } >> "$GITHUB_STEP_SUMMARY"
