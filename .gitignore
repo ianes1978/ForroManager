@@ -1,0 +1,76 @@
+# ---------- Generale ----------
+.DS_Store
+Thumbs.db
+*.log
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.iml
+.env
+.env.*
+!.env.example
+
+# ---------- Segreti e chiavi (mai nel repository) ----------
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.jks
+*.keystore
+key.properties
+*.p12
+*.p8
+*.mobileprovision
+*.pem
+google-services.json
+GoogleService-Info.plist
+
+# ---------- Backend: Node / Wrangler (/api) ----------
+node_modules/
+.wrangler/
+dist/
+coverage/
+.mf/
+*.tsbuildinfo
+
+# ---------- App: Flutter / Dart (/app) ----------
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+**/doc/api/
+.metadata.local
+
+# Android
+**/android/.gradle/
+**/android/captures/
+**/android/local.properties
+**/android/gradlew
+**/android/gradlew.bat
+**/android/gradle/wrapper/gradle-wrapper.jar
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/android/**/GeneratedPluginRegistrant.java
+**/android/.cxx/
+
+# iOS / macOS
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/ephemeral/
+**/ios/Runner/GeneratedPluginRegistrant.*
+**/ios/**/xcuserdata/
+**/ios/**/DerivedData/
+*.ipa
+*.dSYM.zip
+
+# Web
+**/web/flutter_service_worker.js
