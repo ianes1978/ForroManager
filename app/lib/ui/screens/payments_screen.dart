@@ -157,7 +157,12 @@ class PaymentDetailScreen extends ConsumerWidget {
               label: const Text('Annulla pagamento'),
               onPressed: () async {
                 final reason = await askText(context,
-                    title: 'Annullare il pagamento?', message: 'Resterà visibile come annullato.', label: 'Motivo', confirm: 'Annulla pagamento', destructive: true);
+                    title: 'Annullare il pagamento?',
+                    message: '${euro(p.amountCents)} di ${p.memberName}, ${dateShort(p.paidOn)} (${p.description}).\n'
+                        'Le voci pagate torneranno da pagare. Il pagamento resterà visibile come annullato.',
+                    label: 'Motivo',
+                    confirm: 'Annulla pagamento',
+                    destructive: true);
                 if (reason != null && context.mounted &&
                     await runAction(context, () => ref.read(repositoryProvider).voidPayment(p.id, reason), success: 'Pagamento annullato.')) {
                   invalidateData(ref);
