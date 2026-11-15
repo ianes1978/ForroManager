@@ -180,7 +180,7 @@ Future<String?> askText(
           child: Text(confirm),
         ),
         const SizedBox(height: 8),
-        OutlinedButton(onPressed: () => Navigator.pop(ctx), child: const Text('Annulla')),
+        OutlinedButton(onPressed: () => Navigator.pop(ctx), child: const Text('Torna indietro')),
       ]),
     ),
   );
@@ -203,7 +203,7 @@ Future<bool> confirmAction(BuildContext context, {required String title, String?
           child: Text(confirm),
         ),
         const SizedBox(height: 8),
-        OutlinedButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annulla')),
+        OutlinedButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Torna indietro')),
       ]),
     ),
   );
