@@ -1,8 +1,9 @@
 # ForroManager
 
-Registro dei pagamenti dell'associazione: soci, quote associative (anno solare)
-e mensili, prodotti ed eventi (anche venduti a non soci), magazzino con taglie e
-colori, moduli firmati, incassi e riepiloghi. È usato in
+Registro dei pagamenti dell'associazione: soci, tessera annuale (anno solare),
+corsi a periodi di durata libera (mese, trimestre, quadrimestre...) con iscrizioni,
+quote mensili, prodotti ed eventi (anche venduti a non soci), magazzino con taglie
+e colori, moduli firmati, incassi, riepiloghi e report Excel. È usato in
 condivisione dai membri del direttivo (un solo ruolo: tutti possono tutto).
 
 | Cartella | Contenuto |
@@ -90,6 +91,11 @@ La specifica è generata dalle stesse definizioni usate per validare le richiest
 - **Magazzino**: le scorte sono la somma dei movimenti (carichi, vendite, resi,
   rettifiche), per variante di prodotto. Una vendita scala la scorta, l'annullamento
   la rimette. Si può vendere oltre la scorta: l'app avvisa e la scorta va in negativo.
+- **Corsi e periodi**: ogni corso (es. Forró, Zouk) ha periodi con prezzo proprio;
+  iscrivere un socio a un periodo crea la sua quota (`dues.kind = 'periodo'`), che
+  conta per gli arretrati dal mese di inizio. Un socio può seguire più corsi.
+- **Report Excel**: l'API fornisce i dati (`/reports/full`), il file `.xlsx` è
+  generato dall'app (pacchetto `excel`), così il Worker resta nei limiti di CPU.
 - **Più utenti insieme**: i dati stanno solo nel database e ogni salvataggio è
   una transazione. Incassi e vendite accettano l'header `Idempotency-Key`: se la
   rete cade dopo il salvataggio e si riprova, l'operazione non viene registrata
