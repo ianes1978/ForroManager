@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
 
 import 'format.dart';
@@ -25,91 +28,80 @@ List<int> buildExcelReport(Map<String, dynamic> data, {required String associati
   r.note('Generato il ${dateTime(generated.toUtc().toIso8601String())}');
   r.blank();
 
-  final valid = payments.where((p) => p['annullato'] != true).toList();
-  final total = valid.fold<int>(0, (s, p) => s + (p['importoCents'] as int));
+  // Il riepilogo usa formule che leggono i fogli dei dati: se si corregge una
+  // riga in Pagamenti o Spese, i totali si aggiornano da soli.
+  final pay = _Range('Pagamenti', payments.length);
+  final exp = _Range('Spese', expenses.length);
+  final quo = _Range('Quote', dues.length);
+  final ven = _Range('Vendite', sales.length);
+  final soc = _Range('Soci', members.length);
+  // Somma dei pagamenti non annullati, con eventuali condizioni in più.
+  _F sumPay([String extra = '']) => pay.empty ? const _F('0', euro: true) : _F('SUMIFS(${pay.col('E')},${pay.col('H')},"<>sì"$extra)', euro: true);
+
   r.section('Incassi');
-  r.kv('Totale incassato', total, euro: true, bold: true);
-  r.kv('Pagamenti registrati', valid.length);
-  r.kv('Pagamenti annullati', payments.length - valid.length);
-  r.kv('Da soci', valid.where((p) => p['socio'] != 'Non socio').fold<int>(0, (s, p) => s + (p['importoCents'] as int)), euro: true);
-  r.kv('Da non soci', valid.where((p) => p['socio'] == 'Non socio').fold<int>(0, (s, p) => s + (p['importoCents'] as int)), euro: true);
+  final incomeRow = r.excelRow;
+  r.kv('Totale incassato', sumPay(), bold: true);
+  r.kv('Pagamenti registrati', pay.empty ? 0 : _F('ROWS(${pay.col('H')})-COUNTIF(${pay.col('H')},"sì")'));
+  r.kv('Pagamenti annullati', pay.empty ? 0 : _F('COUNTIF(${pay.col('H')},"sì")'));
+  r.kv('Da soci', sumPay(',${pay.col('B')},"<>Non socio"'));
+  r.kv('Da non soci', sumPay(',${pay.col('B')},"Non socio"'));
   r.blank();
 
-  final spent = expenses.fold<int>(0, (s, e) => s + (e['importoCents'] as int));
   r.section('Spese e saldo');
-  r.kv('Totale incassato', total, euro: true);
-  r.kv('Totale spese', spent, euro: true);
-  r.kv('Saldo (incassi − spese)', total - spent, euro: true, bold: true);
-  final byCategory = <String, int>{};
-  for (final e in expenses) {
-    byCategory[e['categoria'] as String] = (byCategory[e['categoria'] as String] ?? 0) + (e['importoCents'] as int);
+  r.kv('Totale incassato', _F('B$incomeRow', euro: true));
+  final spentRow = r.excelRow;
+  r.kv('Totale spese', exp.empty ? const _F('0', euro: true) : _F('SUM(${exp.col('D')})', euro: true));
+  r.kv('Saldo (incassi − spese)', _F('B$incomeRow-B$spentRow', euro: true), bold: true);
+  for (final cat in {for (final e in expenses) e['categoria'] as String}) {
+    r.kv('  $cat', _F('SUMIF(${exp.col('C')},"${_q(cat)}",${exp.col('D')})', euro: true));
   }
-  for (final e in byCategory.entries) {
-    r.kv('  ${e.key}', e.value, euro: true);
-  }
-  final open = expenses.where((e) => e['daRimborsare'] == true).toList();
-  r.kv('Ancora da rimborsare', open.fold<int>(0, (s, e) => s + (e['importoCents'] as int)), euro: true);
-  r.kv('Spese senza ricevuta', expenses.where((e) => e['ricevuta'] != true).length);
+  r.kv('Ancora da rimborsare', exp.empty ? const _F('0', euro: true) : _F('SUMIF(${exp.col('H')},"sì",${exp.col('D')})', euro: true));
+  r.kv('Spese senza ricevuta', exp.empty ? 0 : _F('COUNTIF(${exp.col('I')},"no")'));
   r.blank();
 
   r.section(year == null ? 'Incassi per anno' : 'Incassi per mese');
-  final buckets = <String, int>{};
-  for (final p in valid) {
-    final d = p['data'] as String;
-    final key = year == null ? d.substring(0, 4) : d.substring(0, 7);
-    buckets[key] = (buckets[key] ?? 0) + (p['importoCents'] as int);
-  }
+  final firstBucket = r.excelRow;
+  String between(String from, String to) => ',${pay.col('A')},">="&$from,${pay.col('A')},"<"&$to';
   if (year != null) {
     for (var m = 1; m <= 12; m++) {
-      final key = '$year-${m.toString().padLeft(2, '0')}';
-      r.kv('${mesi[m - 1][0].toUpperCase()}${mesi[m - 1].substring(1)}', buckets[key] ?? 0, euro: true);
+      r.kv('${mesi[m - 1][0].toUpperCase()}${mesi[m - 1].substring(1)}', sumPay(between('DATE($year,$m,1)', 'DATE($year,${m + 1},1)')));
     }
   } else {
-    for (final k in buckets.keys.toList()..sort()) {
-      r.kv(k, buckets[k]!, euro: true);
+    final years = {for (final p in payments) int.parse((p['data'] as String).substring(0, 4))}.toList()..sort();
+    for (final y in years) {
+      r.kv('$y', sumPay(between('DATE($y,1,1)', 'DATE(${y + 1},1,1)')));
     }
   }
-  r.kv('Totale', total, euro: true, bold: true);
+  final lastBucket = r.excelRow - 1;
+  r.kv('Totale', lastBucket >= firstBucket ? _F('SUM(B$firstBucket:B$lastBucket)', euro: true) : const _F('0', euro: true), bold: true);
   r.blank();
 
   r.section('Incassi per metodo');
-  final byMethod = <String, int>{};
-  for (final p in valid) {
-    byMethod[p['metodo'] as String] = (byMethod[p['metodo'] as String] ?? 0) + (p['importoCents'] as int);
-  }
-  for (final e in byMethod.entries) {
-    r.kv(e.key, e.value, euro: true);
+  for (final m in {for (final p in payments) p['metodo'] as String}) {
+    r.kv(m, sumPay(',${pay.col('D')},"${_q(m)}"'));
   }
   r.blank();
 
   r.section(year == null ? 'Quote e iscrizioni' : 'Quote e iscrizioni del $year');
   r.header(['Tipo', 'Dovuto', 'Pagato', 'Da pagare']);
-  const kinds = {'annuale': 'Tessere (quota associativa)', 'periodo': 'Corsi (periodi)', 'mensile': 'Quote mensili'};
+  const kinds = {'annuale': ('Tessere (quota associativa)', 'Tessera'), 'periodo': ('Corsi (periodi)', 'Corso'), 'mensile': ('Quote mensili', 'Mensile')};
   for (final k in kinds.keys) {
-    final list = dues.where((d) => d['tipo'] == k);
-    if (list.isEmpty) continue;
-    r.row([
-      kinds[k],
-      _Euro(list.fold<int>(0, (s, d) => s + (d['importoCents'] as int))),
-      _Euro(list.fold<int>(0, (s, d) => s + (d['pagatoCents'] as int))),
-      _Euro(list.fold<int>(0, (s, d) => s + (d['daPagareCents'] as int))),
-    ]);
+    if (!dues.any((d) => d['tipo'] == k)) continue;
+    final (label, type) = kinds[k]!;
+    _F byType(String col) => _F('SUMIF(${quo.col('C')},"$type",${quo.col(col)})', euro: true);
+    r.row([label, byType('E'), byType('F'), byType('G')]);
   }
-  r.row([
-    'Prodotti ed eventi',
-    _Euro(sales.fold<int>(0, (s, d) => s + (d['importoCents'] as int))),
-    _Euro(sales.fold<int>(0, (s, d) => s + (d['pagatoCents'] as int))),
-    _Euro(sales.fold<int>(0, (s, d) => s + (d['daSaldareCents'] as int))),
-  ]);
+  _F salesSum(String col) => ven.empty ? const _F('0', euro: true) : _F('SUM(${ven.col(col)})', euro: true);
+  r.row(['Prodotti ed eventi', salesSum('F'), salesSum('G'), salesSum('H')]);
   r.blank();
 
-  final active = members.where((m) => m['stato'] == 'attivo').toList();
   r.section('Situazione soci (oggi)');
-  r.kv('Soci attivi', active.length);
-  r.kv('In regola', active.where((m) => m['inRegola'] == true).length);
-  r.kv('Con arretrati', active.where((m) => m['inRegola'] != true).length);
-  r.kv('Totale arretrati', active.fold<int>(0, (s, m) => s + (m['arretratiCents'] as int)), euro: true, bold: true);
-  r.kv('Prodotti da saldare', active.fold<int>(0, (s, m) => s + (m['prodottiDaSaldareCents'] as int)), euro: true);
+  final active = '${soc.col('F')},"attivo"';
+  r.kv('Soci attivi', soc.empty ? 0 : _F('COUNTIF($active)'));
+  r.kv('In regola', soc.empty ? 0 : _F('COUNTIFS($active,${soc.col('I')},"sì")'));
+  r.kv('Con arretrati', soc.empty ? 0 : _F('COUNTIFS($active,${soc.col('I')},"no")'));
+  r.kv('Totale arretrati', soc.empty ? const _F('0', euro: true) : _F('SUMIF($active,${soc.col('J')})', euro: true), bold: true);
+  r.kv('Prodotti da saldare', soc.empty ? const _F('0', euro: true) : _F('SUMIF($active,${soc.col('K')})', euro: true));
 
   // --- Soci -----------------------------------------------------------------
   final s = b.sheet('Soci', widths: [18, 16, 26, 16, 13, 10, 13, 12, 10, 12, 14, 10, 30]);
@@ -132,7 +124,7 @@ List<int> buildExcelReport(Map<String, dynamic> data, {required String associati
       _Euro(d['daPagareCents'] as int), statuses[d['stato']] ?? d['stato'], d['motivoRiduzione'],
     ], highlight: d['stato'] == 'da_pagare' || d['stato'] == 'parziale');
   }
-  q.totals(['Totale', null, null, null, _sum(dues, 'importoCents'), _sum(dues, 'pagatoCents'), _sum(dues, 'daPagareCents'), null, null]);
+  q.totals(['Totale', null, null, null, quo.sum('E'), quo.sum('F'), quo.sum('G'), null, null]);
 
   // --- Pagamenti ------------------------------------------------------------
   final p = b.sheet('Pagamenti', widths: [12, 24, 40, 12, 12, 30, 16, 10, 28]);
@@ -143,7 +135,7 @@ List<int> buildExcelReport(Map<String, dynamic> data, {required String associati
       x['annullato'] == true ? 'sì' : '', x['motivoAnnullamento'],
     ], muted: x['annullato'] == true);
   }
-  p.totals(['Totale (esclusi annullati)', null, null, null, _Euro(total), null, null, null, null]);
+  p.totals(['Totale (esclusi annullati)', null, null, null, pay.empty ? const _F('0', euro: true) : _F('SUMIF(${pay.local('H')},"<>sì",${pay.local('E')})', euro: true), null, null, null, null]);
 
   // --- Vendite --------------------------------------------------------------
   final v = b.sheet('Vendite', widths: [12, 26, 28, 14, 10, 12, 12, 12]);
@@ -154,7 +146,7 @@ List<int> buildExcelReport(Map<String, dynamic> data, {required String associati
       _Euro(x['daSaldareCents'] as int),
     ], highlight: (x['daSaldareCents'] as int) > 0);
   }
-  v.totals(['Totale', null, null, null, sales.fold<int>(0, (s, x) => s + (x['quantita'] as int)), _sum(sales, 'importoCents'), _sum(sales, 'pagatoCents'), _sum(sales, 'daSaldareCents')]);
+  v.totals(['Totale', null, null, null, ven.sum('E', euro: false), ven.sum('F'), ven.sum('G'), ven.sum('H')]);
 
   // --- Magazzino ------------------------------------------------------------
   final w = b.sheet('Magazzino', widths: [12, 26, 14, 12, 10, 24, 28, 16]);
@@ -173,16 +165,61 @@ List<int> buildExcelReport(Map<String, dynamic> data, {required String associati
       e['daRimborsare'] == true ? 'sì' : '', e['ricevuta'] == true ? 'sì' : 'no', e['nota'], e['registrataDa'],
     ]);
   }
-  x.totals(['Totale', null, null, _sum(expenses, 'importoCents'), null, null, null, null, null, null, null]);
+  x.totals(['Totale', null, null, exp.sum('D'), null, null, null, null, null, null, null]);
 
   excel.delete('Sheet1');
   excel.setDefaultSheet('Riepilogo');
-  return excel.encode()!;
+  return _recalculateOnOpen(excel.encode()!);
+}
+
+/// Le formule sono salvate senza risultato: si chiede al programma che apre il
+/// file (Excel, LibreOffice, Numbers...) di ricalcolarle all'apertura.
+List<int> _recalculateOnOpen(List<int> bytes) {
+  final zip = ZipDecoder().decodeBytes(bytes);
+  final out = Archive();
+  for (final f in zip.files) {
+    if (f.name == 'xl/workbook.xml') {
+      var xml = utf8.decode(f.content as List<int>);
+      xml = xml.contains('<calcPr')
+          ? xml.replaceFirst('<calcPr', '<calcPr fullCalcOnLoad="1"')
+          : xml.replaceFirst('</workbook>', '<calcPr fullCalcOnLoad="1"/></workbook>');
+      final data = utf8.encode(xml);
+      out.addFile(ArchiveFile(f.name, data.length, data));
+    } else {
+      out.addFile(f);
+    }
+  }
+  return ZipEncoder().encode(out)!;
+}
+
+String _q(String s) => s.replaceAll('"', '""');
+
+/// Intervallo delle righe di dati di un foglio (intestazione in riga 1).
+class _Range {
+  const _Range(this.sheet, this.n);
+  final String sheet;
+  final int n;
+  bool get empty => n == 0;
+
+  /// Riferimento da un altro foglio, es. Pagamenti!$E$2:$E$40.
+  String col(String c) => '$sheet!\$$c\$2:\$$c\$${n + 1}';
+
+  /// Riferimento nello stesso foglio, es. E2:E40.
+  String local(String c) => '${c}2:$c${n + 1}';
+
+  /// Totale di una colonna, per la riga dei totali del foglio.
+  _F sum(String c, {bool euro = true}) => empty ? _F('0', euro: euro) : _F('SUM(${local(c)})', euro: euro);
+}
+
+/// Cella con formula; euro = formato in euro.
+class _F {
+  const _F(this.formula, {this.euro = false});
+  final String formula;
+  final bool euro;
 }
 
 List<Map<String, dynamic>> _rows(Object? list) => [for (final r in (list as List? ?? const [])) r as Map<String, dynamic>];
 
-_Euro _sum(List<Map<String, dynamic>> rows, String key) => _Euro(rows.fold<int>(0, (s, r) => s + (r[key] as int)));
 
 class _Euro {
   const _Euro(this.cents);
@@ -226,6 +263,9 @@ class _Sheet {
     switch (value) {
       case null:
         v = null;
+      case _F(:final formula, :final euro):
+        v = FormulaCellValue(formula);
+        if (euro) format = _euroFormat;
       case _Euro(:final cents):
         v = DoubleCellValue(cents / 100);
         format = _euroFormat;
@@ -292,9 +332,12 @@ class _Sheet {
     _row++;
   }
 
-  void kv(String label, int value, {bool euro = false, bool bold = false}) {
+  /// Riga di Excel (da 1) in cui verrà scritta la prossima riga.
+  int get excelRow => _row + 1;
+
+  void kv(String label, Object value, {bool euro = false, bool bold = false}) {
     _set(0, label, bold: bold);
-    _set(1, euro ? _Euro(value) : value, bold: bold);
+    _set(1, euro && value is int ? _Euro(value) : value, bold: bold);
     _row++;
   }
 }

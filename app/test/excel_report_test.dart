@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forromanager/core/excel_report.dart';
@@ -56,14 +58,20 @@ void main() {
     final riepilogo = x.tables['Riepilogo']!;
     String text(int c, int r) => riepilogo.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value.toString();
     expect(text(0, 0), 'ForroManager · Report Anno 2026');
-    final totalRow = List.generate(riepilogo.maxRows, (i) => i).firstWhere((i) => text(0, i) == 'Totale incassato');
-    expect(num.parse(text(1, totalRow)), 45); // annullati esclusi
-    final balanceRow = List.generate(riepilogo.maxRows, (i) => i).firstWhere((i) => text(0, i) == 'Saldo (incassi − spese)');
-    expect(num.parse(text(1, balanceRow)), 20); // 45 − 20 − 5
-    final toReimburse = List.generate(riepilogo.maxRows, (i) => i).firstWhere((i) => text(0, i) == 'Ancora da rimborsare');
-    expect(num.parse(text(1, toReimburse)), 5);
+    // I valori sono formule (calcolate da Excel/LibreOffice all'apertura).
+    int rowOf(String label) => List.generate(riepilogo.maxRows, (i) => i).firstWhere((i) => text(0, i) == label);
+    expect(text(1, rowOf('Totale incassato')), contains('SUMIFS(Pagamenti!\$E\$2:\$E\$4,Pagamenti!\$H\$2:\$H\$4,"<>sì")'));
+    final balance = rowOf('Saldo (incassi − spese)');
+    expect(text(1, balance), matches(RegExp(r'^=?B\d+-B\d+$')));
+    expect(text(1, rowOf('Ancora da rimborsare')), contains('SUMIF(Spese!\$H\$2:\$H\$3,"sì",Spese!\$D\$2:\$D\$3)'));
     expect(x.tables['Spese']!.maxRows, 4); // intestazione + 2 righe + totale
     final pagamenti = x.tables['Pagamenti']!;
     expect(pagamenti.maxRows, 5); // intestazione + 3 righe + totale
+  });
+
+  test('chiede il ricalcolo delle formule all\'apertura del file', () {
+    final bytes = buildExcelReport(sample(), associationName: 'ForroManager');
+    final workbook = ZipDecoder().decodeBytes(bytes).files.firstWhere((f) => f.name == 'xl/workbook.xml');
+    expect(utf8.decode(workbook.content as List<int>), contains('fullCalcOnLoad="1"'));
   });
 }
