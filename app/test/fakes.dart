@@ -59,6 +59,20 @@ class FakeRepository extends Repository {
   final saleKeys = <String?>[];
   bool failNextPaymentWithNetwork = false;
 
+  /// Risposta di "dove è usato"; null = non usato.
+  Usage? usageResult;
+  final usageCalls = <String>[];
+  final deletedProducts = <int>[];
+
+  @override
+  Future<Usage> usage(String kind, Object id) async {
+    usageCalls.add('$kind/$id');
+    return usageResult ?? Usage(name: 'Elemento', deletable: true, uses: const [], message: 'Non è usato da nessuna parte.');
+  }
+
+  @override
+  Future<void> deleteProduct(int id) async => deletedProducts.add(id);
+
   final deletedDues = <int>[];
   final cancelledDues = <(int, String)>[];
   Object? deleteDueError;

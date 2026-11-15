@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/providers.dart';
 import '../widgets/common.dart';
+import '../widgets/delete_flow.dart';
 
 class MethodsScreen extends ConsumerWidget {
   const MethodsScreen({super.key});
@@ -29,6 +30,32 @@ class MethodsScreen extends ConsumerWidget {
         builder: (list) => ListView(children: [
           for (final m in list)
             SwitchListTile(
+              secondary: PopupMenuButton<String>(
+                tooltip: 'Azioni su ${m.label}',
+                onSelected: (v) async {
+                  if (v == 'rename') {
+                    final label = await askText(context, title: 'Rinomina ${m.label}', label: 'Nome', initial: m.label, confirm: 'Salva');
+                    if (label != null && context.mounted && await runAction(context, () => repo.updatePaymentMethod(m.code, label: label), success: 'Metodo rinominato.')) {
+                      invalidateData(ref);
+                    }
+                  } else {
+                    await deleteWithUsage(context, ref,
+                        kind: 'payment-method',
+                        id: m.code,
+                        delete: () => repo.deletePaymentMethod(m.code),
+                        success: 'Metodo eliminato.',
+                        alternative: m.active
+                            ? (label: 'Disattiva', action: () async {
+                                if (await runAction(context, () => repo.updatePaymentMethod(m.code, active: false))) invalidateData(ref);
+                              })
+                            : null);
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'rename', child: Text('Rinomina')),
+                  PopupMenuItem(value: 'delete', child: Text('Elimina')),
+                ],
+              ),
               title: Text(m.label),
               subtitle: Text(m.active ? 'Disponibile' : 'Non disponibile per i nuovi pagamenti'),
               value: m.active,

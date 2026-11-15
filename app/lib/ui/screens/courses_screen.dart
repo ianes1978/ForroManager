@@ -6,6 +6,7 @@ import '../../core/format.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
 import '../widgets/common.dart';
+import '../widgets/delete_flow.dart';
 
 String _ym(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
 
@@ -109,12 +110,16 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
           invalidateData(ref);
         }
       case 'elimina':
-        final ok = await confirmAction(context,
-            title: 'Eliminare ${c.name}?',
-            message: 'Si può eliminare solo un corso senza iscritti né pagamenti, ad esempio se creato per sbaglio. Altrimenti puoi disattivarlo.',
-            confirm: 'Elimina corso',
-            destructive: true);
-        if (ok && mounted && await runAction(context, () => repo.deleteCourse(c.id), success: 'Corso eliminato.')) invalidateData(ref);
+        await deleteWithUsage(context, ref,
+            kind: 'course',
+            id: c.id,
+            delete: () => repo.deleteCourse(c.id),
+            success: 'Corso eliminato.',
+            alternative: c.active
+                ? (label: 'Disattiva', action: () async {
+                    if (await runAction(context, () => repo.updateCourse(c.id, active: false), success: 'Corso disattivato.')) invalidateData(ref);
+                  })
+                : null);
     }
   }
 
@@ -185,6 +190,11 @@ class PeriodScreen extends ConsumerWidget {
     final formKey = GlobalKey<FormState>();
     var active = p.active;
     var apply = false;
+    DateTime ym(String s) => DateTime(int.parse(s.substring(0, 4)), int.parse(s.substring(5, 7)));
+    var from = ym(p.from);
+    var to = ym(p.to);
+    final now = DateTime.now();
+    final months = {for (var i = -24; i < 24; i++) DateTime(now.year, now.month + i), from};
     await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -198,6 +208,34 @@ class PeriodScreen extends ConsumerWidget {
               Text('Modifica ${p.label}', style: Theme.of(ctx).textTheme.titleLarge),
               const SizedBox(height: 12),
               TextFormField(controller: name, decoration: const InputDecoration(labelText: 'Nome del periodo')),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: DropdownButtonFormField<DateTime>(
+                    initialValue: from,
+                    decoration: const InputDecoration(labelText: 'Dal mese'),
+                    items: [for (final m in months.toList()..sort()) DropdownMenuItem(value: m, child: Text(yearMonthLabel(_ym(m))))],
+                    onChanged: (v) => setState(() {
+                      final len = (to.year - from.year) * 12 + to.month - from.month;
+                      from = v!;
+                      to = DateTime(from.year, from.month + len);
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<DateTime>(
+                    key: ValueKey('${from}_$to'),
+                    initialValue: to,
+                    decoration: const InputDecoration(labelText: 'Al mese'),
+                    items: [
+                      for (var i = 0; i < 24; i++)
+                        DropdownMenuItem(value: DateTime(from.year, from.month + i), child: Text(yearMonthLabel(_ym(DateTime(from.year, from.month + i))))),
+                    ],
+                    onChanged: (v) => setState(() => to = v!),
+                  ),
+                ),
+              ]),
               const SizedBox(height: 12),
               EuroField(controller: price, label: 'Prezzo (€)', allowZero: true),
               CheckboxListTile(
@@ -214,7 +252,10 @@ class PeriodScreen extends ConsumerWidget {
                   var n = 0;
                   final ok = await runAction(ctx, () async {
                     n = await ref.read(repositoryProvider).updatePeriod(p.id,
-                        name: name.text.trim().isEmpty ? null : name.text.trim(),
+                        // Il nome si manda solo se cambiato: così, cambiando i mesi, quello automatico si aggiorna da solo.
+                        name: name.text.trim().isEmpty || name.text.trim() == p.name ? null : name.text.trim(),
+                        from: _ym(from) == p.from ? null : _ym(from),
+                        to: _ym(to) == p.to ? null : _ym(to),
                         amountCents: parseEuro(price.text),
                         active: active,
                         applyToUnpaid: apply,
@@ -297,16 +338,18 @@ class PeriodScreen extends ConsumerWidget {
   }
 
   Future<void> _delete(BuildContext context, WidgetRef ref, CoursePeriod p) async {
-    final ok = await confirmAction(context,
-        title: 'Eliminare ${p.label}?',
-        message: 'Si può eliminare solo un periodo senza iscritti né pagamenti. Altrimenti puoi chiuderlo alle iscrizioni da Modifica.',
-        confirm: 'Elimina periodo',
-        destructive: true);
-    if (!ok || !context.mounted) return;
-    if (await runAction(context, () => ref.read(repositoryProvider).deletePeriod(p.id), success: 'Periodo eliminato.')) {
-      invalidateData(ref);
-      if (context.mounted) context.pop();
-    }
+    final repo = ref.read(repositoryProvider);
+    final deleted = await deleteWithUsage(context, ref,
+        kind: 'course-period',
+        id: p.id,
+        delete: () => repo.deletePeriod(p.id),
+        success: 'Periodo eliminato.',
+        alternative: p.active
+            ? (label: 'Chiudi alle iscrizioni', action: () async {
+                if (await runAction(context, () => repo.updatePeriod(p.id, active: false, version: p.updatedAt), success: 'Periodo chiuso alle iscrizioni.')) invalidateData(ref);
+              })
+            : null);
+    if (deleted && context.mounted) context.pop();
   }
 
   Future<void> _renew(BuildContext context, WidgetRef ref, CoursePeriod p) async {

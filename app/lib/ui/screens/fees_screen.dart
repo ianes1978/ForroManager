@@ -5,6 +5,7 @@ import '../../core/format.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
 import '../widgets/common.dart';
+import '../widgets/delete_flow.dart';
 
 class FeesScreen extends ConsumerStatefulWidget {
   const FeesScreen({super.key});
@@ -134,6 +135,50 @@ class _FeesScreenState extends ConsumerState<FeesScreen> {
     }
   }
 
+  Future<void> _categoryActions(Fee f) async {
+    final repo = ref.read(repositoryProvider);
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(title: Text(f.title, style: Theme.of(ctx).textTheme.titleMedium)),
+          if (f.active) ListTile(leading: const Icon(Icons.euro), title: Text('Importo $_year'), onTap: () => Navigator.pop(ctx, 'amount')),
+          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Rinomina'), onTap: () => Navigator.pop(ctx, 'rename')),
+          ListTile(
+            leading: Icon(f.active ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+            title: Text(f.active ? 'Disattiva' : 'Riattiva'),
+            onTap: () => Navigator.pop(ctx, 'toggle'),
+          ),
+          ListTile(leading: const Icon(Icons.delete_outline), title: const Text('Elimina'), onTap: () => Navigator.pop(ctx, 'delete')),
+        ]),
+      ),
+    );
+    if (choice == null || !mounted) return;
+    switch (choice) {
+      case 'amount':
+        await _editFee(f);
+      case 'rename':
+        final name = await askText(context, title: 'Rinomina ${f.title}', label: 'Nome', initial: f.name, confirm: 'Salva');
+        if (name != null && mounted && await runAction(context, () => repo.updateFeeCategory(f.categoryId, name: name), success: 'Tariffa rinominata.')) invalidateData(ref);
+      case 'toggle':
+        if (await runAction(context, () => repo.updateFeeCategory(f.categoryId, active: !f.active), success: f.active ? 'Tariffa disattivata.' : 'Tariffa riattivata.')) {
+          invalidateData(ref);
+        }
+      case 'delete':
+        await deleteWithUsage(context, ref,
+            kind: 'fee-category',
+            id: f.categoryId,
+            delete: () => repo.deleteFeeCategory(f.categoryId),
+            success: 'Tariffa eliminata.',
+            alternative: f.active
+                ? (label: 'Disattiva', action: () async {
+                    if (await runAction(context, () => repo.updateFeeCategory(f.categoryId, active: false), success: 'Tariffa disattivata.')) invalidateData(ref);
+                  })
+                : null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final fees = ref.watch(feesProvider(_year));
@@ -155,7 +200,7 @@ class _FeesScreenState extends ConsumerState<FeesScreen> {
           ),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Text('Tocca una tariffa per cambiarne l\'importo. Per uno sconto a un singolo socio apri la sua scheda e tocca la quota.'),
+            child: Text('Tocca una tariffa per cambiarne l\'importo, tieni premuto per rinominarla, disattivarla o eliminarla. Per uno sconto a un singolo socio apri la sua scheda e tocca la quota.'),
           ),
           for (final f in list.where((f) => f.active))
             ListTile(
@@ -163,7 +208,13 @@ class _FeesScreenState extends ConsumerState<FeesScreen> {
               subtitle: Text(f.kind == 'pacchetto' ? 'Prezzo per ${f.months} mensilità pagate insieme' : f.kind == 'annuale' ? 'Anno solare' : 'Ogni mese'),
               trailing: f.amountCents == null ? const StatusBadge('Da fissare', tone: Tone.warn) : Text(euro(f.amountCents!), style: Theme.of(context).textTheme.titleMedium),
               onTap: () => _editFee(f),
+              onLongPress: () => _categoryActions(f),
             ),
+          if (list.any((f) => !f.active)) ...[
+            const SectionTitle('Tariffe disattivate'),
+            for (final f in list.where((f) => !f.active))
+              ListTile(title: Text(f.title), subtitle: const Text('Non proposta ai nuovi soci'), trailing: const Icon(Icons.more_vert), onTap: () => _categoryActions(f)),
+          ],
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: OutlinedButton.icon(onPressed: _addCategory, icon: const Icon(Icons.add), label: const Text('Aggiungi tariffa')),

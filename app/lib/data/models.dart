@@ -658,3 +658,34 @@ class Enrollment {
   final int paidCents;
   final String? adjustmentReason;
 }
+
+/// Dove è usato un dato e se si può eliminare (vedi /usage/{kind}/{id}).
+class Usage {
+  Usage({required this.name, required this.deletable, required this.uses, required this.message, this.hint});
+  factory Usage.fromJson(Json j) => Usage(
+        name: j['name'] as String,
+        deletable: j['deletable'] as bool,
+        uses: [for (final u in j['uses'] as List) UsageItem.fromJson(u as Json)],
+        message: j['message'] as String,
+        hint: j['hint'] as String?,
+      );
+  final String name;
+  final bool deletable;
+  final List<UsageItem> uses;
+  final String message;
+  final String? hint;
+}
+
+class UsageItem {
+  UsageItem({required this.what, required this.count, required this.blocking, required this.examples});
+  factory UsageItem.fromJson(Json j) => UsageItem(
+        what: j['what'] as String,
+        count: j['count'] as int,
+        blocking: j['blocking'] as bool,
+        examples: [for (final e in j['examples'] as List) e as String],
+      );
+  final String what;
+  final int count;
+  final bool blocking;
+  final List<String> examples;
+}

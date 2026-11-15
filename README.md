@@ -92,8 +92,16 @@ La specifica è generata dalle stesse definizioni usate per validare le richiest
 - **Quote** (tessera, mensili, iscrizioni ai corsi, prodotti) si eliminano se non
   hanno mai ricevuto pagamenti, anche poi annullati; per i prodotti la merce torna
   in magazzino. Altrimenti si annullano con un motivo e restano nello storico.
-- **Corsi e periodi** si eliminano solo se non hanno iscritti né pagamenti
-  (ad esempio creati per sbaglio); altrimenti si disattivano.
+- **Eliminazione con avviso**: soci, prodotti (anche workshop ed eventi), varianti,
+  tariffe, metodi di pagamento, moduli, corsi, periodi e quote si eliminano se non
+  sono usati. Prima di eliminare l'app chiede al server dove è usato il dato
+  (`GET /usage/{tipo}/{id}`): se è libero dice cosa sparisce insieme, altrimenti
+  elenca dove è usato con qualche esempio (es. "4 partecipanti: Ferri Giulia,
+  Ricci Elena...") e propone l'alternativa (disattivare, segnare cessato, annullare).
+  Eliminando un socio i suoi dati personali escono anche dal registro modifiche.
+- **Correzioni**: oltre ai dati anagrafici si correggono pagamenti, importi delle
+  quote, mesi dei periodi, taglia e colore delle varianti; un carico o una
+  rettifica di magazzino sbagliati si eliminano.
 - **Magazzino**: le scorte sono la somma dei movimenti (carichi, vendite, resi,
   rettifiche), per variante di prodotto. Una vendita scala la scorta, l'annullamento
   la rimette. Si può vendere oltre la scorta: l'app avvisa e la scorta va in negativo.

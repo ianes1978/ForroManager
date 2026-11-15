@@ -496,10 +496,17 @@ class _ConfirmState extends ConsumerState<_Confirm> {
         ),
         const SizedBox(height: 16),
         methods.when(
-          data: (list) => Wrap(spacing: 8, runSpacing: 8, children: [
+          data: (list) {
+            // Se il metodo predefinito non c'è più (es. eliminato), si parte dal primo disponibile.
+            if (!list.any((m) => m.code == _method && (m.active || m.code == widget.editing?.methodCode))) {
+              final first = list.where((m) => m.active).firstOrNull;
+              if (first != null) _method = first.code;
+            }
+            return Wrap(spacing: 8, runSpacing: 8, children: [
             for (final m in list.where((m) => m.active || m.code == widget.editing?.methodCode))
               ChoiceChip(label: Text(m.label), selected: _method == m.code, onSelected: (_) => setState(() => _method = m.code)),
-          ]),
+          ]);
+          },
           loading: () => const LinearProgressIndicator(),
           error: (e, _) => Text(errorMessage(e)),
         ),

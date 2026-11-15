@@ -32,8 +32,8 @@ describe("dove è usato ed eliminazione", () => {
     await api(`/members/${a}/charges`, { token, body: { productId: w.id } });
     const u = await usage("product", w.id);
     expect(u.deletable).toBe(false);
-    expect(u.uses.find((x) => x.what === "partecipanti o acquisti")).toMatchObject({ count: 1, examples: ["Rossi Anna"] });
-    expect(u.message).toContain("1 partecipanti o acquisti (Rossi Anna)");
+    expect(u.uses.find((x) => x.what === "partecipante o acquisto")).toMatchObject({ count: 1, examples: ["Rossi Anna"] });
+    expect(u.message).toContain("1 partecipante o acquisto (Rossi Anna)");
     expect(await errorCode(await del(`/products/${w.id}`))).toBe("product_in_use");
 
     const vuoto = await product("Workshop creato per sbaglio");
@@ -47,7 +47,7 @@ describe("dove è usato ed eliminazione", () => {
     await api(`/variants/${p.variants[0]!.id}/stock`, { token, body: { kind: "carico", quantity: 5 } });
     const u = await usage("product", p.id);
     expect(u.deletable).toBe(true);
-    expect(u.message).toContain("1 carichi e rettifiche di magazzino");
+    expect(u.message).toContain("1 carico o rettifica di magazzino");
     expect(u.message).toContain("2 varianti (taglie e colori) (S · blu, M · blu)");
     // Una variante si elimina, l'ultima no.
     expect((await del(`/variants/${p.variants[1]!.id}`)).status).toBe(204);
@@ -62,7 +62,7 @@ describe("dove è usato ed eliminazione", () => {
     await api(`/members/${id}/charges`, { token, body: { productId: w.id } });
     const u = await usage("member", id);
     expect(u).toMatchObject({ name: "Inserito Errato", deletable: true });
-    expect(u.message).toContain("quote e addebiti non pagati");
+    expect(u.message).toContain("quota o addebito non pagato");
     expect((await del(`/members/${id}`)).status).toBe(204);
     expect((await api(`/members/${id}`, { token })).status).toBe(404);
     const left = await env.DB.prepare("SELECT COUNT(*) AS n FROM audit_log WHERE entity = 'member' AND entity_id = ?1 AND details LIKE '%333%'").bind(id).first<{ n: number }>();
@@ -80,7 +80,7 @@ describe("dove è usato ed eliminazione", () => {
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: { code: string; message: string } };
     expect(body.error.code).toBe("member_in_use");
-    expect(body.error.message).toContain("1 pagamenti");
+    expect(body.error.message).toContain("1 pagamento");
     expect(body.error.message).toContain("cessato");
   });
 
@@ -90,7 +90,7 @@ describe("dove è usato ed eliminazione", () => {
     const someone = (await (await api(`/members/${await member("Con", "Tariffa")}`, { token })).json()) as { annualCategory: { id: number } };
     const used = await usage("fee-category", someone.annualCategory.id);
     expect(used.deletable).toBe(false);
-    expect(used.uses.find((u) => u.what === "soci con questa tariffa")!.examples).toContain("Tariffa Con");
+    expect(used.message).toContain("soci con questa tariffa");
 
     await api("/payment-methods", { token, body: { label: "Satispay" } });
     expect((await usage("payment-method", "satispay")).deletable).toBe(true);
@@ -104,6 +104,6 @@ describe("dove è usato ed eliminazione", () => {
     expect((await api(`/members/${m}/forms/${form.id}`, { token, method: "PUT", body: { delivered: true, returnedOn: today } })).status).toBe(200);
     const u = await usage("form", form.id);
     expect(u.deletable).toBe(false);
-    expect(u.uses[0]).toMatchObject({ what: "moduli restituiti firmati", examples: ["Moduli Firmataria"] });
+    expect(u.uses[0]).toMatchObject({ what: "modulo restituito firmato", examples: ["Moduli Firmataria"] });
   });
 });

@@ -6,6 +6,7 @@ import '../../core/format.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
 import '../widgets/common.dart';
+import '../widgets/delete_flow.dart';
 
 const _types = {'stage': 'Stage', 'evento': 'Evento', 'merchandising': 'Merchandising', 'altro': 'Altro'};
 
@@ -226,15 +227,32 @@ class ProductDetailScreen extends ConsumerWidget {
           ListTile(title: Text(v.label, style: Theme.of(ctx).textTheme.titleMedium), subtitle: Text('In magazzino: ${v.stock}')),
           ListTile(leading: const Icon(Icons.add_box_outlined), title: const Text('Carico (merce arrivata)'), onTap: () => Navigator.pop(ctx, 'carico')),
           ListTile(leading: const Icon(Icons.fact_check_outlined), title: const Text('Rettifica dopo un conteggio'), onTap: () => Navigator.pop(ctx, 'rettifica')),
+          ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Correggi taglia o colore'), onTap: () => Navigator.pop(ctx, 'edit')),
           ListTile(
             leading: Icon(v.active ? Icons.visibility_off_outlined : Icons.visibility_outlined),
             title: Text(v.active ? 'Non più in vendita' : 'Rimetti in vendita'),
             onTap: () => Navigator.pop(ctx, 'toggle'),
           ),
+          ListTile(leading: const Icon(Icons.delete_outline), title: const Text('Elimina variante'), onTap: () => Navigator.pop(ctx, 'delete')),
         ]),
       ),
     );
     if (choice == null || !context.mounted) return;
+    if (choice == 'delete') {
+      await deleteWithUsage(context, ref,
+          kind: 'variant',
+          id: v.id,
+          delete: () => repo.deleteVariant(v.id),
+          success: 'Variante eliminata.',
+          alternative: v.active ? (label: 'Togli dalla vendita', action: () async {
+            if (await runAction(context, () => repo.setVariantActive(v.id, false))) invalidateData(ref);
+          }) : null);
+      return;
+    }
+    if (choice == 'edit') {
+      await _variantForm(context, ref, variant: v);
+      return;
+    }
     var ok = false;
     if (choice == 'toggle') {
       ok = await runAction(context, () => repo.setVariantActive(v.id, !v.active));
@@ -259,9 +277,12 @@ class ProductDetailScreen extends ConsumerWidget {
     if (ok) invalidateData(ref);
   }
 
-  Future<void> _addVariant(BuildContext context, WidgetRef ref) async {
-    final size = TextEditingController();
-    final color = TextEditingController();
+  Future<void> _addVariant(BuildContext context, WidgetRef ref) => _variantForm(context, ref);
+
+  /// Nuova variante, o correzione di taglia e colore di una esistente.
+  Future<void> _variantForm(BuildContext context, WidgetRef ref, {ProductVariant? variant}) async {
+    final size = TextEditingController(text: variant?.size ?? '');
+    final color = TextEditingController(text: variant?.color ?? '');
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -269,7 +290,7 @@ class ProductDetailScreen extends ConsumerWidget {
       builder: (ctx) => Padding(
         padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.viewInsetsOf(ctx).bottom),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Nuova variante', style: Theme.of(ctx).textTheme.titleLarge),
+          Text(variant == null ? 'Nuova variante' : 'Correggi ${variant.label}', style: Theme.of(ctx).textTheme.titleLarge),
           const SizedBox(height: 12),
           TextField(controller: size, decoration: const InputDecoration(labelText: 'Taglia (facoltativa)')),
           const SizedBox(height: 12),
@@ -277,15 +298,27 @@ class ProductDetailScreen extends ConsumerWidget {
           const SizedBox(height: 16),
           FilledButton(
             onPressed: () async {
-              final ok = await runAction(ctx, () => ref.read(repositoryProvider).addVariant(productId, size.text.trim(), color.text.trim()), success: 'Variante aggiunta.');
+              final repo = ref.read(repositoryProvider);
+              final ok = variant == null
+                  ? await runAction(ctx, () => repo.addVariant(productId, size.text.trim(), color.text.trim()), success: 'Variante aggiunta.')
+                  : await runAction(ctx, () => repo.updateVariant(variant.id, size: size.text.trim(), color: color.text.trim()), success: 'Variante corretta.');
               if (ok && ctx.mounted) Navigator.pop(ctx, true);
             },
-            child: const Text('Aggiungi'),
+            child: Text(variant == null ? 'Aggiungi' : 'Salva'),
           ),
         ]),
       ),
     );
     if (saved == true) invalidateData(ref);
+  }
+
+  Future<void> _deleteMovement(BuildContext context, WidgetRef ref, StockMovement m) async {
+    final what = m.kind == 'carico' ? 'il carico di ${m.quantity} pezzi' : 'la rettifica (${m.quantity > 0 ? '+' : ''}${m.quantity})';
+    final ok = await confirmAction(context,
+        title: 'Eliminare $what?', message: '${m.variantLabel}, ${dateShort(m.movedOn)}. La scorta verrà ricalcolata.', confirm: 'Elimina', destructive: true);
+    if (ok && context.mounted && await runAction(context, () => ref.read(repositoryProvider).deleteStockMovement(m.id), success: 'Movimento eliminato.')) {
+      invalidateData(ref);
+    }
   }
 
   @override
@@ -296,7 +329,26 @@ class ProductDetailScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(p?.name ?? 'Prodotto'),
-        actions: [if (p != null) IconButton(tooltip: 'Modifica', icon: const Icon(Icons.edit_outlined), onPressed: () => _editInfo(context, ref, p))],
+        actions: [
+          if (p != null) IconButton(tooltip: 'Modifica', icon: const Icon(Icons.edit_outlined), onPressed: () => _editInfo(context, ref, p)),
+          if (p != null)
+            IconButton(
+              tooltip: 'Elimina',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () async {
+                final repo = ref.read(repositoryProvider);
+                final deleted = await deleteWithUsage(context, ref,
+                    kind: 'product',
+                    id: p.id,
+                    delete: () => repo.deleteProduct(p.id),
+                    success: '${p.name} eliminato.',
+                    alternative: p.active ? (label: 'Togli dalla vendita', action: () async {
+                      if (await runAction(context, () => repo.updateProduct(p.id, active: false, version: p.updatedAt), success: 'Non più in vendita.')) invalidateData(ref);
+                    }) : null);
+                if (deleted && context.mounted) context.pop();
+              },
+            ),
+        ],
       ),
       body: AsyncBody(
         value: product,
@@ -320,6 +372,10 @@ class ProductDetailScreen extends ConsumerWidget {
               child: OutlinedButton.icon(onPressed: () => _addVariant(context, ref), icon: const Icon(Icons.add), label: const Text('Aggiungi taglia o colore')),
             ),
             const SectionTitle('Movimenti'),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text('Tieni premuto un carico o una rettifica per eliminarli se sbagliati.'),
+            ),
             if (movements != null)
               AsyncBody(
                 value: movements,
@@ -333,6 +389,8 @@ class ProductDetailScreen extends ConsumerWidget {
                           '${m.soldTo == null ? '' : '${m.kind == 'reso' ? ' · da ' : ' · a '}${m.soldTo == 'Non socio' ? 'un non socio' : m.soldTo}'}'),
                       subtitle: Text('${dateShort(m.movedOn)} · ${m.userName}${m.note != null ? ' · ${m.note}' : ''}'),
                       trailing: Text(m.quantity > 0 ? '+${m.quantity}' : '${m.quantity}', style: Theme.of(context).textTheme.titleMedium),
+                      // Un carico o una rettifica sbagliati si eliminano; le vendite si correggono dalla quota.
+                      onLongPress: m.kind == 'carico' || m.kind == 'rettifica' ? () => _deleteMovement(context, ref, m) : null,
                     ),
                 ]),
               ),

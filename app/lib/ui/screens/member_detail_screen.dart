@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/errors.dart';
 import '../../core/format.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
 import '../widgets/common.dart';
+import '../widgets/delete_flow.dart';
 import 'courses_screen.dart';
 
 class MemberDetailScreen extends ConsumerStatefulWidget {
@@ -63,9 +63,28 @@ class _MoreMenu extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.read(repositoryProvider);
+    Future<void> cease() async {
+      final ok = await confirmAction(context,
+          title: 'Segnare ${member.firstName} come cessato?',
+          message: 'Non riceverà più nuove quote. Storico e pagamenti restano.',
+          confirm: 'Conferma cessazione',
+          destructive: true);
+      if (ok && context.mounted && await runAction(context, () => repo.ceaseMember(member.id, today()), success: 'Socio segnato come cessato.')) {
+        onChanged();
+      }
+    }
+
     return PopupMenuButton<String>(
       onSelected: (v) async {
-        if (v == 'cease') {
+        if (v == 'delete') {
+          final deleted = await deleteWithUsage(context, ref,
+              kind: 'member',
+              id: member.id,
+              delete: () => repo.deleteMember(member.id),
+              success: 'Socio eliminato.',
+              alternative: member.active ? (label: 'Segna come cessato', action: cease) : null);
+          if (deleted && context.mounted) context.pop();
+        } else if (v == 'cease') {
           final ok = await confirmAction(context,
               title: 'Segnare ${member.firstName} come cessato?',
               message: 'Non riceverà più nuove quote. Storico e pagamenti restano.',
@@ -81,6 +100,7 @@ class _MoreMenu extends ConsumerWidget {
       itemBuilder: (_) => [
         if (member.active) const PopupMenuItem(value: 'cease', child: Text('Segna come cessato')),
         if (!member.active) const PopupMenuItem(value: 'reactivate', child: Text('Riattiva socio')),
+        const PopupMenuItem(value: 'delete', child: Text('Elimina socio')),
       ],
     );
   }
@@ -236,34 +256,21 @@ class _DueTile extends ConsumerWidget {
         final changed = await showAdjustSheet(context, ref, due);
         if (changed) invalidateData(ref);
       case 'delete':
-        final ok = await confirmAction(context,
-            title: 'Eliminare ${due.label.toLowerCase()}?',
-            message: due.kind == 'prodotto' ? 'La merce torna in magazzino.' : 'Se serve, potrai crearla di nuovo.',
-            confirm: 'Elimina quota',
-            destructive: true);
-        if (!ok || !context.mounted) return;
-        try {
-          await repo.deleteDue(due.id);
-          if (context.mounted) showMessage(context, 'Quota eliminata.');
-          invalidateData(ref);
-        } on ApiException catch (e) {
-          // Ha ricevuto pagamenti poi annullati: resta nello storico, si può solo annullare.
-          if (e.code != 'has_payments' || !context.mounted) {
-            if (context.mounted) showMessage(context, errorMessage(e));
-            return;
-          }
-          final reason = await askText(context,
-              title: 'Annullare ${due.label.toLowerCase()}?',
-              message: 'Ha avuto dei pagamenti, poi annullati: non si può eliminare, ma si può annullare. Resterà nello storico.',
-              label: 'Motivo',
-              confirm: 'Annulla quota',
-              destructive: true);
-          if (reason != null && context.mounted && await runAction(context, () => repo.cancelDue(due.id, reason), success: 'Quota annullata.')) {
-            invalidateData(ref);
-          }
-        } catch (e) {
-          if (context.mounted) showMessage(context, errorMessage(e));
-        }
+        await deleteWithUsage(context, ref,
+            kind: 'due',
+            id: due.id,
+            delete: () => repo.deleteDue(due.id),
+            success: 'Quota eliminata.',
+            alternative: (
+              label: 'Annulla quota con un motivo',
+              action: () async {
+                final reason = await askText(context,
+                    title: 'Annullare ${due.label.toLowerCase()}?', message: 'Resterà nello storico come annullata.', label: 'Motivo', confirm: 'Annulla quota', destructive: true);
+                if (reason != null && context.mounted && await runAction(context, () => repo.cancelDue(due.id, reason), success: 'Quota annullata.')) {
+                  invalidateData(ref);
+                }
+              },
+            ));
     }
   }
 }

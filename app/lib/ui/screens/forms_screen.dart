@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/format.dart';
 import '../../state/providers.dart';
 import '../widgets/common.dart';
+import '../widgets/delete_flow.dart';
 
 class FormsScreen extends ConsumerWidget {
   const FormsScreen({super.key});
@@ -85,11 +86,35 @@ class FormDetailScreen extends ConsumerWidget {
           if (form != null)
             PopupMenuButton<String>(
               onSelected: (v) async {
-                if (v == 'toggle' && await runAction(context, () => repo.updateForm(formId, active: !form.active), success: form.active ? 'Modulo disattivato.' : 'Modulo riattivato.')) {
-                  invalidateData(ref);
+                switch (v) {
+                  case 'toggle':
+                    if (await runAction(context, () => repo.updateForm(formId, active: !form.active), success: form.active ? 'Modulo disattivato.' : 'Modulo riattivato.')) {
+                      invalidateData(ref);
+                    }
+                  case 'rename':
+                    final name = await askText(context, title: 'Rinomina modulo', label: 'Nome', initial: form.name, confirm: 'Salva');
+                    if (name != null && context.mounted && await runAction(context, () => repo.updateForm(formId, name: name), success: 'Modulo rinominato.')) {
+                      invalidateData(ref);
+                    }
+                  case 'delete':
+                    final deleted = await deleteWithUsage(context, ref,
+                        kind: 'form',
+                        id: formId,
+                        delete: () => repo.deleteForm(formId),
+                        success: 'Modulo eliminato.',
+                        alternative: form.active
+                            ? (label: 'Disattiva modulo', action: () async {
+                                if (await runAction(context, () => repo.updateForm(formId, active: false), success: 'Modulo disattivato.')) invalidateData(ref);
+                              })
+                            : null);
+                    if (deleted && context.mounted) context.pop();
                 }
               },
-              itemBuilder: (_) => [PopupMenuItem(value: 'toggle', child: Text(form.active ? 'Disattiva modulo' : 'Riattiva modulo'))],
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'rename', child: Text('Rinomina')),
+                PopupMenuItem(value: 'toggle', child: Text(form.active ? 'Disattiva modulo' : 'Riattiva modulo')),
+                const PopupMenuItem(value: 'delete', child: Text('Elimina modulo')),
+              ],
             ),
         ],
       ),

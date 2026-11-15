@@ -55,6 +55,17 @@ class Repository {
       Due.fromJson(await api.post('/dues/$id/adjust', {'amountCents': amountCents, 'reason': ?reason}) as Json);
   Future<void> cancelDue(int id, String reason) => api.post('/dues/$id/cancel', {'reason': reason});
   Future<void> deleteDue(int id) => api.delete('/dues/$id');
+
+  // Eliminazione ------------------------------------------------------------
+  /// Dove è usato un dato: kind è member, product, variant, fee-category, payment-method, form, course, course-period, due.
+  Future<Usage> usage(String kind, Object id) async => Usage.fromJson(await api.get('/usage/$kind/$id') as Json);
+  Future<void> deleteMember(int id) => api.delete('/members/$id');
+  Future<void> deleteProduct(int id) => api.delete('/products/$id');
+  Future<void> deleteVariant(int variantId) => api.delete('/variants/$variantId');
+  Future<void> deleteFeeCategory(int id) => api.delete('/fee-categories/$id');
+  Future<void> deletePaymentMethod(String code) => api.delete('/payment-methods/$code');
+  Future<void> deleteForm(int id) => api.delete('/forms/$id');
+  Future<void> deleteStockMovement(int id) => api.delete('/stock-movements/$id');
   /// Addebita un prodotto a un socio. Restituisce la quota e la scorta rimasta (null se senza scorte).
   Future<(Due, int?)> chargeProduct(int memberId, int productId,
       {int? variantId, int quantity = 1, int? amountCents, String? reason, String? idempotencyKey}) async {
@@ -90,9 +101,10 @@ class Repository {
       CoursePeriod.fromJson(await api.post('/courses/$courseId/periods', {'from': from, 'to': to, 'amountCents': amountCents, 'name': ?name}) as Json);
 
   /// Restituisce quante iscrizioni non ancora pagate hanno preso il nuovo prezzo.
-  Future<int> updatePeriod(int periodId, {String? name, int? amountCents, bool? active, bool applyToUnpaid = false, String? version}) async {
+  Future<int> updatePeriod(int periodId,
+      {String? name, String? from, String? to, int? amountCents, bool? active, bool applyToUnpaid = false, String? version}) async {
     final res = await api.patch('/course-periods/$periodId',
-        {'name': ?name, 'amountCents': ?amountCents, 'active': ?active, 'applyToUnpaid': applyToUnpaid}, version: version) as Json;
+        {'name': ?name, 'from': ?from, 'to': ?to, 'amountCents': ?amountCents, 'active': ?active, 'applyToUnpaid': applyToUnpaid}, version: version) as Json;
     return res['updatedDues'] as int;
   }
 
@@ -135,6 +147,8 @@ class Repository {
       Product.fromJson(await api.post('/products/$productId/variants', {'size': size, 'color': color}) as Json);
   Future<Product> setVariantActive(int variantId, bool active) async =>
       Product.fromJson(await api.patch('/variants/$variantId', {'active': active}) as Json);
+  Future<Product> updateVariant(int variantId, {required String size, required String color}) async =>
+      Product.fromJson(await api.patch('/variants/$variantId', {'size': size, 'color': color}) as Json);
 
   /// kind: 'carico' (aggiunge pezzi) o 'rettifica' (porta la scorta al valore contato).
   Future<Product> moveStock(int variantId, String kind, int quantity, {String? note}) async =>

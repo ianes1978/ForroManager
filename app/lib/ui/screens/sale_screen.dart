@@ -210,10 +210,16 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: ref.watch(paymentMethodsProvider).when(
-                          data: (methods) => Wrap(spacing: 8, runSpacing: 8, children: [
+                          data: (methods) {
+                            // Se il metodo predefinito non c'è più, si parte dal primo disponibile.
+                            if (!methods.any((m) => m.active && m.code == _method)) {
+                              _method = methods.where((m) => m.active).firstOrNull?.code ?? _method;
+                            }
+                            return Wrap(spacing: 8, runSpacing: 8, children: [
                             for (final m in methods.where((m) => m.active))
                               ChoiceChip(label: Text(m.label), selected: _method == m.code, onSelected: (_) => setState(() => _method = m.code)),
-                          ]),
+                          ]);
+                          },
                           loading: () => const LinearProgressIndicator(),
                           error: (e, _) => Text(errorMessage(e)),
                         ),

@@ -43,8 +43,31 @@ function describe(u: Use): string {
   return `${u.count} ${u.what}${ex}`;
 }
 
+/** Forme al singolare, per "1 pagamento" invece di "1 pagamenti". */
+const SINGULAR: Record<string, string> = {
+  "partecipanti o acquisti": "partecipante o acquisto",
+  "pagamenti ricevuti (anche annullati)": "pagamento ricevuto (anche annullato)",
+  "quote annullate mai pagate": "quota annullata mai pagata",
+  "pagamenti": "pagamento",
+  "quote e addebiti non pagati": "quota o addebito non pagato",
+  "moduli consegnati": "modulo consegnato",
+  "sospensioni": "sospensione",
+  "carichi e rettifiche di magazzino": "carico o rettifica di magazzino",
+  "varianti (taglie e colori)": "variante (taglia e colore)",
+  "acquisti": "acquisto",
+  "soci con questa tariffa": "socio con questa tariffa",
+  "quote": "quota",
+  "importi annuali": "importo annuale",
+  "moduli restituiti firmati": "modulo restituito firmato",
+  "consegne non ancora restituite": "consegna non ancora restituita",
+  "iscritti": "iscritto",
+  "periodi": "periodo",
+  "pagamenti (anche annullati)": "pagamento (anche annullato)",
+  "movimenti di magazzino (la merce torna disponibile)": "movimento di magazzino (la merce torna disponibile)",
+};
+
 function build(name: string, all: Use[], hint: string | null): Usage {
-  const uses = all.filter((u) => u.count > 0);
+  const uses = all.filter((u) => u.count > 0).map((u) => (u.count === 1 && SINGULAR[u.what] ? { ...u, what: SINGULAR[u.what]! } : u));
   const blocking = uses.filter((u) => u.blocking);
   const along = uses.filter((u) => !u.blocking);
   let message: string;

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forromanager/core/errors.dart';
 import 'package:forromanager/data/models.dart';
 import 'package:go_router/go_router.dart';
 
@@ -22,24 +21,41 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Elimina quota'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Elimina quota'));
-    await tester.pumpAndSettle();
   }
 
-  testWidgets('elimina una quota mai pagata', (tester) async {
+  testWidgets('elimina una quota mai pagata dopo aver chiesto dove è usata', (tester) async {
     final fake = await pumpApp(tester, repo: repo());
     await openDue(tester);
+    expect(fake.usageCalls, ['due/10']);
+    expect(find.text('Non è usato da nessuna parte.'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Elimina'));
+    await tester.pumpAndSettle();
     expect(fake.deletedDues, [10]);
     expect(find.text('Quota eliminata.'), findsOneWidget);
   });
 
-  testWidgets('se ha avuto pagamenti annullati propone di annullarla con un motivo', (tester) async {
-    final fake = await pumpApp(tester, repo: repo()..deleteDueError = const ApiException(409, 'has_payments', 'Ha pagamenti'));
+  testWidgets('se è usata dice dove e propone di annullarla con un motivo', (tester) async {
+    final fake = await pumpApp(
+      tester,
+      repo: repo()
+        ..usageResult = Usage(
+          name: 'Mensile ottobre 2026',
+          deletable: false,
+          uses: [UsageItem(what: 'pagamenti (anche annullati)', count: 1, blocking: true, examples: ['5 ott 2026 25,00 € annullato'])],
+          message: '...',
+          hint: 'Puoi annullarla indicando il motivo: resterà nello storico.',
+        ),
+    );
     await openDue(tester);
-    expect(find.text('Annullare mensile ottobre 2026?'), findsOneWidget);
+    expect(find.text('Non si può eliminare'), findsOneWidget);
+    expect(find.text('1 pagamenti (anche annullati)'), findsOneWidget);
+    expect(find.text('5 ott 2026 25,00 € annullato'), findsOneWidget);
+    await tester.tap(find.text('Annulla quota con un motivo'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, 'Esonerato');
     await tester.tap(find.widgetWithText(FilledButton, 'Annulla quota'));
     await tester.pumpAndSettle();
+    expect(fake.deletedDues, isEmpty);
     expect(fake.cancelledDues, [(10, 'Esonerato')]);
   });
 }
