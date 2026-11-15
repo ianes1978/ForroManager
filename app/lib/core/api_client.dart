@@ -39,6 +39,7 @@ class ApiClient {
   /// [version]: la versione (updatedAt) letta; se nel frattempo un altro ha
   /// salvato, il server risponde con un errore invece di sovrascrivere.
   Future<dynamic> put(String path, Object body, {String? version}) => _send('PUT', path, body: body, headers: {'If-Match': ?version});
+  Future<dynamic> delete(String path) => _send('DELETE', path);
   Future<dynamic> patch(String path, Object body, {String? version}) => _send('PATCH', path, body: body, headers: {'If-Match': ?version});
 
   /// Scarica un file (es. CSV) come byte.

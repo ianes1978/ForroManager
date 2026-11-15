@@ -1954,6 +1954,85 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Utenti"
+        ],
+        "summary": "Elimina un utente (non sé stessi): non potrà più accedere e non compare più nell'elenco",
+        "description": "Lo storico resta: pagamenti e registro modifiche continuano a mostrare il suo nome. L'email torna libera. Non si può mai restare senza utenti attivi.",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "example": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Utente eliminato"
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/users/{id}/password": {

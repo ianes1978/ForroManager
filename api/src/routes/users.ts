@@ -1,7 +1,7 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { auditStatement } from "../lib/audit.ts";
 import { assertNotModified } from "../lib/concurrency.ts";
-import { hashPassword } from "../lib/crypto.ts";
+import { hashPassword, randomBytes, toBase64Url } from "../lib/crypto.ts";
 import { conflict, notFound } from "../lib/errors.ts";
 import { IdParam, bearer, commonErrors, createRouter, errors, IfMatchHeaders, json } from "../lib/http.ts";
 import { nowIso } from "../lib/time.ts";
@@ -77,6 +77,18 @@ const resetPasswordRoute = createRoute({
   responses: { 204: { description: "Password reimpostata" }, ...commonErrors, 404: errors[404], 409: errors[409] },
 });
 
+const deleteUserRoute = createRoute({
+  method: "delete",
+  path: "/users/{id}",
+  tags: ["Utenti"],
+  summary: "Elimina un utente (non sé stessi): non potrà più accedere e non compare più nell'elenco",
+  description:
+    "Lo storico resta: pagamenti e registro modifiche continuano a mostrare il suo nome. L'email torna libera. Non si può mai restare senza utenti attivi.",
+  security: bearer,
+  request: { params: IdParam },
+  responses: { 204: { description: "Utente eliminato" }, ...commonErrors, 404: errors[404], 409: errors[409] },
+});
+
 const revokeSessionsRoute = createRoute({
   method: "post",
   path: "/users/{id}/revoke-sessions",
@@ -88,7 +100,7 @@ const revokeSessionsRoute = createRoute({
 });
 
 async function findUser(db: D1Database, id: number): Promise<UserRow> {
-  const row = await db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?1`).bind(id).first<UserRow>();
+  const row = await db.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?1 AND deleted_at IS NULL`).bind(id).first<UserRow>();
   if (!row) throw notFound("Utente non trovato.");
   return row;
 }
@@ -107,7 +119,7 @@ userRoutes.use("/users/*", requireAuth);
 
 userRoutes
   .openapi(listRoute, async (c) => {
-    const { results } = await c.env.DB.prepare(`SELECT ${USER_COLUMNS} FROM users ORDER BY name COLLATE NOCASE`).all<UserRow>();
+    const { results } = await c.env.DB.prepare(`SELECT ${USER_COLUMNS} FROM users WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE`).all<UserRow>();
     return c.json({ items: results.map(toUser) }, 200);
   })
   .openapi(createUserRoute, async (c) => {
@@ -177,6 +189,32 @@ userRoutes
         .bind(h.hash, h.salt, h.iterations, now, id),
       revokeAll(db, id, now),
       auditStatement(db, me.id, "password_reset", "user", id),
+    ]);
+    return c.body(null, 204);
+  })
+  .openapi(deleteUserRoute, async (c) => {
+    const { id } = c.req.valid("param");
+    const db = c.env.DB;
+    const me = c.get("user");
+    if (id === me.id) throw conflict("cannot_delete_self", "Non puoi eliminare il tuo stesso utente.");
+    const target = await findUser(db, id);
+    const others = await db
+      .prepare("SELECT COUNT(*) AS n FROM users WHERE active = 1 AND deleted_at IS NULL AND id <> ?1")
+      .bind(id)
+      .first<{ n: number }>();
+    if ((others?.n ?? 0) === 0) throw conflict("last_user", "Non puoi eliminare l'ultimo utente attivo.");
+    const now = nowIso();
+    const random = toBase64Url(randomBytes(32));
+    await db.batch([
+      // Email liberata e password inutilizzabile; il nome resta per lo storico.
+      db
+        .prepare(
+          `UPDATE users SET active = 0, deleted_at = ?1, deleted_by = ?2, email = ?3, password_hash = ?4, password_salt = ?4,
+                            must_change_password = 0, updated_at = ?1 WHERE id = ?5`,
+        )
+        .bind(now, me.id, `eliminato-${id}-${random.slice(0, 8)}@utente-eliminato.invalid`, random, id),
+      revokeAll(db, id, now),
+      auditStatement(db, me.id, "delete", "user", id, { name: target.name }),
     ]);
     return c.body(null, 204);
   })

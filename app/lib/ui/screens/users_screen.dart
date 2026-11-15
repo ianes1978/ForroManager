@@ -68,7 +68,15 @@ class UsersScreen extends ConsumerWidget {
             ListTile(
               leading: Icon(u.active ? Icons.person_off_outlined : Icons.person_outline),
               title: Text(u.active ? 'Disattiva' : 'Riattiva'),
+              subtitle: Text(u.active ? 'Non potrà accedere finché non lo riattivi' : 'Potrà di nuovo accedere'),
               onTap: () => Navigator.pop(ctx, 'toggle'),
+            ),
+          if (!isMe)
+            ListTile(
+              leading: Icon(Icons.delete_outline, color: Theme.of(ctx).colorScheme.error),
+              title: Text('Elimina utente', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+              subtitle: const Text('Definitivo: sparisce dall\'elenco, lo storico resta'),
+              onTap: () => Navigator.pop(ctx, 'delete'),
             ),
         ]),
       ),
@@ -82,6 +90,16 @@ class UsersScreen extends ConsumerWidget {
         if (pwd != null && context.mounted) await runAction(context, () => repo.resetPassword(u.id, pwd), success: 'Password reimpostata.');
       case 'revoke':
         await runAction(context, () => repo.revokeSessions(u.id), success: 'Sessioni chiuse.');
+      case 'delete':
+        final ok = await confirmAction(
+          context,
+          title: 'Eliminare ${u.name}?',
+          message: 'Non potrà più accedere e non comparirà più tra gli utenti. I pagamenti che ha registrato e il registro modifiche '
+              'continueranno a mostrare il suo nome. L\'email ${u.email} tornerà libera.',
+          confirm: 'Elimina utente',
+          destructive: true,
+        );
+        if (ok && context.mounted) await runAction(context, () => repo.deleteUser(u.id), success: '${u.name} eliminato.');
       case 'toggle':
         await runAction(context, () => repo.updateUser(u.id, active: !u.active, version: u.updatedAt),
             success: u.active ? 'Utente disattivato.' : 'Utente riattivato.');
@@ -117,7 +135,7 @@ class UsersScreen extends ConsumerWidget {
             ),
           const Padding(
             padding: EdgeInsets.all(16),
-            child: Text('Non esiste registrazione libera: i nuovi utenti li crea chi è già dentro. Non puoi disattivare te stesso.'),
+            child: Text('Non esiste registrazione libera: i nuovi utenti li crea chi è già dentro. Non puoi disattivare né eliminare te stesso, così resta sempre almeno un utente.'),
           ),
         ]),
       ),

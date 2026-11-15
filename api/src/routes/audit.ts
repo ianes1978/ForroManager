@@ -44,6 +44,7 @@ const ACTION_LABELS: Record<string, string> = {
   password_change: "ha cambiato la propria password",
   password_reset: "ha reimpostato la password di",
   revoke_sessions: "ha chiuso le sessioni di",
+  delete: "ha eliminato",
 };
 
 export function describeAudit(action: string, entity: string): string {

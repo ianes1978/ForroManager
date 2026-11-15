@@ -97,3 +97,40 @@ describe("gestione utenti", () => {
     expect(await res.json()).toMatchObject({ name: "Nome Nuovo", email: `nuova-${other.id}@esempio.it` });
   });
 });
+
+describe("eliminazione utenti", () => {
+  it("elimina un altro utente: sparisce dall'elenco, non accede più e l'email torna libera", async () => {
+    const me = await loggedInUser();
+    const other = await loggedInUser({ name: "Provvisorio" });
+    const res = await api(`/users/${other.id}`, { method: "DELETE", token: me.token });
+    expect(res.status).toBe(204);
+    const list = (await (await api("/users", { token: me.token })).json()) as { items: { id: number }[] };
+    expect(list.items.some((u) => u.id === other.id)).toBe(false);
+    expect((await api("/auth/me", { token: other.token })).status).toBe(401);
+    await expect(login(other.email)).rejects.toThrow(/401/);
+    const again = await api("/users", { token: me.token, body: { email: other.email, name: "Nuovo", temporaryPassword: "temporanea-lunga-1" } });
+    expect(again.status).toBe(201);
+    expect((await api(`/users/${other.id}`, { method: "DELETE", token: me.token })).status).toBe(404);
+    const audit = (await (await api("/audit?entity=user", { token: me.token })).json()) as { items: { description: string }[] };
+    expect(audit.items.some((a) => a.description === "ha eliminato un utente")).toBe(true);
+  });
+
+  it("non permette di eliminare se stessi", async () => {
+    const me = await loggedInUser();
+    const res = await api(`/users/${me.id}`, { method: "DELETE", token: me.token });
+    expect(res.status).toBe(409);
+    expect(await errorCode(res)).toBe("cannot_delete_self");
+  });
+
+  it("lo storico conserva il nome di chi ha registrato i pagamenti", async () => {
+    const me = await loggedInUser();
+    const cassiere = await loggedInUser({ name: "Cassiere Provvisorio" });
+    const m = (await (await api("/members", { token: cassiere.token, body: { firstName: "A", lastName: "B", joinedOn: "2026-01-01" } })).json()) as { id: number };
+    const p = (await (await api("/products", { token: cassiere.token, body: { name: "Spilla", type: "altro", priceCents: 100 } })).json()) as { id: number };
+    const due = (await (await api(`/members/${m.id}/charges`, { token: cassiere.token, body: { productId: p.id } })).json()) as { id: number };
+    const pay = (await (await api("/payments", { token: cassiere.token, body: { memberId: m.id, amountCents: 100, method: "contanti", items: [{ dueId: due.id }] } })).json()) as { id: number };
+    await api(`/users/${cassiere.id}`, { method: "DELETE", token: me.token });
+    const detail = (await (await api(`/payments/${pay.id}`, { token: me.token })).json()) as { recordedBy: { name: string } };
+    expect(detail.recordedBy.name).toBe("Cassiere Provvisorio");
+  });
+});

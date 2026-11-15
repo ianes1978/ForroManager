@@ -9,7 +9,8 @@ export type AuditAction =
   | "generate"
   | "password_change"
   | "password_reset"
-  | "revoke_sessions";
+  | "revoke_sessions"
+  | "delete";
 
 /**
  * Prepara una riga del registro modifiche, da eseguire nello stesso batch

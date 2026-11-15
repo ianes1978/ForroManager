@@ -59,6 +59,15 @@ class FakeRepository extends Repository {
   final saleKeys = <String?>[];
   bool failNextPaymentWithNetwork = false;
 
+  List<AppUser> usersList = [];
+  final deletedUsers = <int>[];
+
+  @override
+  Future<List<AppUser>> users() async => usersList.where((u) => !deletedUsers.contains(u.id)).toList();
+
+  @override
+  Future<void> deleteUser(int id) async => deletedUsers.add(id);
+
   @override
   Future<List<Course>> courses({int? year}) async => coursesList;
 

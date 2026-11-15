@@ -29,6 +29,7 @@ class Repository {
   Future<void> resetPassword(int id, String temporaryPassword) =>
       api.post('/users/$id/password', {'temporaryPassword': temporaryPassword});
   Future<void> revokeSessions(int id) => api.post('/users/$id/revoke-sessions');
+  Future<void> deleteUser(int id) => api.delete('/users/$id');
 
   // Soci ---------------------------------------------------------------------
   Future<List<Member>> members({String? q, String status = 'attivo', String? filter}) async =>
