@@ -5,10 +5,12 @@ import { conflict, invalid, notFound } from "../lib/errors.ts";
 import { DateSchema, IdParam, YearMonthSchema, bearer, commonErrors, createRouter, errors, json } from "../lib/http.ts";
 import { nowIso, todayIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
+import { SUMMARY_CTE, type SummaryColumns, summaryParams, toSummary } from "../data/summary.ts";
 import {
   MEMBER_SELECT,
   MemberDetailSchema,
   MemberInputSchema,
+  MemberListItemSchema,
   type MemberRow,
   MemberSchema,
   SuspensionSchema,
@@ -25,9 +27,13 @@ const listRoute = createRoute({
     query: z.object({
       q: z.string().trim().max(80).optional(),
       status: z.enum(["attivo", "cessato", "tutti"]).default("attivo"),
+      filter: z.enum(["arretrati", "moduli"]).optional().openapi({ description: "Solo soci con arretrati o con moduli da riavere" }),
     }),
   },
-  responses: { 200: { description: "Soci", ...json(z.object({ items: z.array(MemberSchema) })) }, ...commonErrors },
+  responses: {
+    200: { description: "Soci con riepilogo di arretrati, prodotti da saldare e moduli mancanti", ...json(z.object({ items: z.array(MemberListItemSchema) })) },
+    ...commonErrors,
+  },
 });
 
 const getRoute = createRoute({
@@ -201,9 +207,9 @@ memberRoutes.use("/members/*", requireAuth);
 
 memberRoutes
   .openapi(listRoute, async (c) => {
-    const { q, status } = c.req.valid("query");
+    const { q, status, filter } = c.req.valid("query");
+    const params: unknown[] = [...summaryParams(todayIso())];
     const where: string[] = [];
-    const params: unknown[] = [];
     if (status !== "tutti") {
       params.push(status);
       where.push(`m.status = ?${params.length}`);
@@ -214,10 +220,14 @@ memberRoutes
         where.push(`(m.first_name LIKE ?${params.length} ESCAPE '\\' OR m.last_name LIKE ?${params.length} ESCAPE '\\')`);
       }
     }
-    const sql = `${MEMBER_SELECT} ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    if (filter === "arretrati") where.push("COALESCE(s.arrears_cents, 0) > 0");
+    if (filter === "moduli") where.push("COALESCE(f.missing_forms, 0) > 0");
+    const sql = `WITH ${SUMMARY_CTE}
+                 ${MEMBER_SELECT.replace("FROM members m", "FROM members m LEFT JOIN member_summary s ON s.member_id = m.id LEFT JOIN member_forms_missing f ON f.member_id = m.id").replace("m.created_at, m.updated_at", "m.created_at, m.updated_at, s.arrears_cents, s.arrears_count, s.open_charges_cents, s.open_charges_count, f.missing_forms")}
+                 ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
                  ORDER BY m.last_name COLLATE NOCASE, m.first_name COLLATE NOCASE`;
-    const { results } = await c.env.DB.prepare(sql).bind(...params).all<MemberRow>();
-    return c.json({ items: results.map(toMember) }, 200);
+    const { results } = await c.env.DB.prepare(sql).bind(...params).all<MemberRow & SummaryColumns>();
+    return c.json({ items: results.map((r) => ({ ...toMember(r), summary: toSummary(r) })) }, 200);
   })
   .openapi(getRoute, async (c) => c.json(await memberDetail(c.env.DB, c.req.valid("param").id), 200))
   .openapi(createMemberRoute, async (c) => {

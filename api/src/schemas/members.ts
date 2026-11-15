@@ -103,3 +103,16 @@ export function toMember(r: MemberRow): z.infer<typeof MemberSchema> {
     updatedAt: r.updated_at,
   };
 }
+
+export const MemberSummarySchema = z
+  .object({
+    arrearsCents: z.number().int(),
+    arrearsCount: z.number().int(),
+    openChargesCents: z.number().int(),
+    openChargesCount: z.number().int(),
+    missingForms: z.number().int(),
+    inRegola: z.boolean(),
+  })
+  .openapi("MemberListSummary");
+
+export const MemberListItemSchema = MemberSchema.extend({ summary: MemberSummarySchema }).openapi("MemberListItem");
