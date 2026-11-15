@@ -219,6 +219,8 @@ class Repository {
   Future<StatusReport> statusReport() async => StatusReport.fromJson(await api.get('/reports/status') as Json);
   Future<IncomeReport> incomeReport(int year) async =>
       IncomeReport.fromJson(await api.get('/reports/income', query: {'year': year}) as Json);
+  /// Dati completi per il report Excel (null = tutto lo storico).
+  Future<Json> fullReport({int? year}) async => await api.get('/reports/full', query: {'year': year}) as Json;
   Future<List<int>> exportMembersCsv() => api.download('/export/members.csv');
   Future<List<int>> exportStockCsv({String? from, String? to}) => api.download('/export/stock.csv', query: {'from': from, 'to': to});
   Future<List<int>> exportPaymentsCsv({String? from, String? to}) =>

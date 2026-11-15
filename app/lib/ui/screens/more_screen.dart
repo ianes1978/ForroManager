@@ -25,7 +25,7 @@ class MoreScreen extends ConsumerWidget {
         item(Icons.shopping_bag_outlined, 'Prodotti ed eventi', 'Magliette, stage, serate e prezzi', '/altro/prodotti'),
         item(Icons.assignment_outlined, 'Moduli', 'Consegnati agli allievi e restituiti firmati', '/altro/moduli'),
         item(Icons.payments_outlined, 'Metodi di pagamento', 'Contanti, bonifico, PayPal...', '/altro/metodi'),
-        item(Icons.download_outlined, 'Esporta CSV', 'Soci e pagamenti', '/altro/esporta'),
+        item(Icons.download_outlined, 'Esporta', 'Report Excel, CSV di soci, pagamenti e magazzino', '/altro/esporta'),
         item(Icons.group_outlined, 'Utenti', "Chi accede all'app", '/altro/utenti'),
         item(Icons.history, 'Registro modifiche', 'Chi ha fatto cosa e quando', '/altro/registro'),
         item(Icons.key_outlined, 'Il mio account', 'Cambio password', '/altro/account'),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/excel_report.dart';
 import '../../core/format.dart';
 import '../../core/share_file.dart';
 import '../../state/providers.dart';
@@ -14,11 +15,12 @@ class ExportScreen extends ConsumerStatefulWidget {
 
 class _ExportScreenState extends ConsumerState<ExportScreen> {
   String _period = 'anno';
+  int? _reportYear = DateTime.now().year;
   bool _busy = false;
 
-  Future<void> _export(Future<List<int>> Function() download, String filename) async {
+  Future<void> _export(Future<List<int>> Function() download, String filename, {String mimeType = 'text/csv'}) async {
     setState(() => _busy = true);
-    await runAction(context, () async => shareFile(await download(), filename, 'text/csv'));
+    await runAction(context, () async => shareFile(await download(), filename, mimeType));
     if (mounted) setState(() => _busy = false);
   }
 
@@ -33,12 +35,35 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
       _ => (null, null),
     };
     return Scaffold(
-      appBar: AppBar(title: const Text('Esporta CSV')),
+      appBar: AppBar(title: const Text('Esporta')),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         const Text(
-          'Il file contiene dati personali. Sul telefono viene creato in una cartella temporanea, aperto con il menu Condividi e poi cancellato: salvalo solo dove serve.',
+          'I file contengono dati personali. Sul telefono vengono creati in una cartella temporanea, aperti con il menu Condividi e poi cancellati: salvali solo dove serve.',
         ),
         if (_busy) const Padding(padding: EdgeInsets.only(top: 16), child: LinearProgressIndicator()),
+        const SectionTitle('Report Excel completo'),
+        const Text('Un file .xlsx formattato con riepilogo, soci, quote e corsi, pagamenti, vendite e magazzino.'),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<int?>(
+          initialValue: _reportYear,
+          decoration: const InputDecoration(labelText: 'Periodo del report'),
+          items: [
+            for (var y = now.year; y >= now.year - 4; y--) DropdownMenuItem(value: y, child: Text('Anno $y')),
+            const DropdownMenuItem(value: null, child: Text('Tutto lo storico')),
+          ],
+          onChanged: (v) => setState(() => _reportYear = v),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: _busy
+              ? null
+              : () => _export(() async {
+                    final data = await repo.fullReport(year: _reportYear);
+                    return buildExcelReport(data, associationName: 'ForroManager');
+                  }, 'report_${_reportYear ?? 'completo'}_${today()}.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+          icon: const Icon(Icons.table_chart_outlined),
+          label: const Text('Crea report Excel'),
+        ),
         const SectionTitle('Soci'),
         FilledButton.tonalIcon(
           onPressed: _busy ? null : () => _export(repo.exportMembersCsv, 'soci_${today()}.csv'),
