@@ -236,6 +236,7 @@ class Payment {
     this.voidReason,
     required this.allocations,
     required this.description,
+    this.updatedAt,
   });
   factory Payment.fromJson(Json j) => Payment(
         id: j['id'] as int,
@@ -252,6 +253,7 @@ class Payment {
         voidReason: j['voidReason'] as String?,
         allocations: [for (final a in j['allocations'] as List) PaymentAllocation.fromJson(a as Json)],
         description: j['description'] as String,
+        updatedAt: j['updatedAt'] as String?,
       );
   final int id;
   final int? memberId;
@@ -267,6 +269,8 @@ class Payment {
   final String? voidReason;
   final List<PaymentAllocation> allocations;
   final String description;
+  /// Versione da rimandare in If-Match per correggere il pagamento.
+  final String? updatedAt;
 }
 
 class PaymentMethod {

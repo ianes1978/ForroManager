@@ -82,6 +82,8 @@ class Repository {
   // Corsi e periodi ---------------------------------------------------------
   Future<List<Course>> courses({int? year}) async => _items(await api.get('/courses', query: {'year': year}), Course.fromJson);
   Future<void> createCourse(String name) => api.post('/courses', {'name': name});
+  Future<void> deleteCourse(int id) => api.delete('/courses/$id');
+  Future<void> deletePeriod(int periodId) => api.delete('/course-periods/$periodId');
   Future<void> updateCourse(int id, {String? name, bool? active}) => api.patch('/courses/$id', {'name': ?name, 'active': ?active});
   Future<CoursePeriod> createPeriod(int courseId, String from, String to, int amountCents, {String? name}) async =>
       CoursePeriod.fromJson(await api.post('/courses/$courseId/periods', {'from': from, 'to': to, 'amountCents': amountCents, 'name': ?name}) as Json);
@@ -193,6 +195,25 @@ class Repository {
         'note': ?note,
         'packageCategoryId': ?packageCategoryId,
       }, idempotencyKey) as Json);
+  /// Corregge un pagamento. Con [items] null le voci restano quelle attuali.
+  Future<Payment> updatePayment(
+    int id, {
+    int? memberId,
+    required int amountCents,
+    required String method,
+    required String paidOn,
+    List<PayItem>? items,
+    String? note,
+    String? version,
+  }) async =>
+      Payment.fromJson(await api.put('/payments/$id', {
+        'memberId': ?memberId,
+        'amountCents': amountCents,
+        'method': method,
+        'paidOn': paidOn,
+        if (items != null) 'items': [for (final i in items) i.toJson()],
+        'note': note,
+      }, version: version) as Json);
   Future<Payment> voidPayment(int id, String reason) async =>
       Payment.fromJson(await api.post('/payments/$id/void', {'reason': reason}) as Json);
   Future<List<PaymentMethod>> paymentMethods() async => _items(await api.get('/payment-methods'), PaymentMethod.fromJson);

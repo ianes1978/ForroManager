@@ -97,6 +97,37 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
     if (saved == true) invalidateData(ref);
   }
 
+  Future<void> _courseAction(Course c, String action) async {
+    final repo = ref.read(repositoryProvider);
+    switch (action) {
+      case 'rinomina':
+        final name = await askText(context, title: 'Rinomina ${c.name}', label: 'Nome del corso', initial: c.name, confirm: 'Salva');
+        if (name != null && mounted && await runAction(context, () => repo.updateCourse(c.id, name: name), success: 'Corso rinominato.')) invalidateData(ref);
+      case 'disattiva' || 'riattiva':
+        final on = action == 'riattiva';
+        if (await runAction(context, () => repo.updateCourse(c.id, active: on), success: on ? 'Corso riattivato.' : 'Corso disattivato: non compare più tra i corsi attivi.')) {
+          invalidateData(ref);
+        }
+      case 'elimina':
+        final ok = await confirmAction(context,
+            title: 'Eliminare ${c.name}?',
+            message: 'Si può eliminare solo un corso senza iscritti né pagamenti, ad esempio se creato per sbaglio. Altrimenti puoi disattivarlo.',
+            confirm: 'Elimina corso',
+            destructive: true);
+        if (ok && mounted && await runAction(context, () => repo.deleteCourse(c.id), success: 'Corso eliminato.')) invalidateData(ref);
+    }
+  }
+
+  Widget _courseMenu(Course c) => PopupMenuButton<String>(
+        tooltip: 'Azioni su ${c.name}',
+        onSelected: (a) => _courseAction(c, a),
+        itemBuilder: (_) => [
+          const PopupMenuItem(value: 'rinomina', child: Text('Rinomina')),
+          PopupMenuItem(value: c.active ? 'disattiva' : 'riattiva', child: Text(c.active ? 'Disattiva' : 'Riattiva')),
+          const PopupMenuItem(value: 'elimina', child: Text('Elimina')),
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
     final courses = ref.watch(coursesProvider(_year));
@@ -119,7 +150,11 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
           ),
           if (list.isEmpty) const ListTile(title: Text('Nessun corso ancora.')),
           for (final c in list.where((c) => c.active)) ...[
-            SectionTitle(c.name, trailing: TextButton.icon(onPressed: () => _newPeriod(c), icon: const Icon(Icons.add), label: const Text('Periodo'))),
+            SectionTitle(c.name,
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  TextButton.icon(onPressed: () => _newPeriod(c), icon: const Icon(Icons.add), label: const Text('Periodo')),
+                  _courseMenu(c),
+                ])),
             if (c.periods.isEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('Nessun periodo nel $_year.')),
             for (final p in c.periods)
               ListTile(
@@ -128,6 +163,11 @@ class _CoursesScreenState extends ConsumerState<CoursesScreen> {
                 trailing: Text(euro(p.amountCents), style: theme.textTheme.titleMedium),
                 onTap: () => context.push('/altro/corsi/periodo/${p.id}'),
               ),
+          ],
+          if (list.any((c) => !c.active)) ...[
+            const SectionTitle('Corsi disattivati'),
+            for (final c in list.where((c) => !c.active))
+              ListTile(title: Text(c.name), subtitle: Text('${c.periods.length} periodi nel $_year'), trailing: _courseMenu(c)),
           ],
         ]),
       ),
@@ -256,6 +296,19 @@ class PeriodScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _delete(BuildContext context, WidgetRef ref, CoursePeriod p) async {
+    final ok = await confirmAction(context,
+        title: 'Eliminare ${p.label}?',
+        message: 'Si può eliminare solo un periodo senza iscritti né pagamenti. Altrimenti puoi chiuderlo alle iscrizioni da Modifica.',
+        confirm: 'Elimina periodo',
+        destructive: true);
+    if (!ok || !context.mounted) return;
+    if (await runAction(context, () => ref.read(repositoryProvider).deletePeriod(p.id), success: 'Periodo eliminato.')) {
+      invalidateData(ref);
+      if (context.mounted) context.pop();
+    }
+  }
+
   Future<void> _renew(BuildContext context, WidgetRef ref, CoursePeriod p) async {
     final repo = ref.read(repositoryProvider);
     final courses = await repo.courses().catchError((Object e) => <Course>[]);
@@ -291,7 +344,10 @@ class PeriodScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(data.value?.$1.label ?? 'Periodo'),
-        actions: [if (data.hasValue) IconButton(tooltip: 'Modifica', icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(context, ref, data.requireValue.$1))],
+        actions: [
+          if (data.hasValue) IconButton(tooltip: 'Modifica', icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(context, ref, data.requireValue.$1)),
+          if (data.hasValue) IconButton(tooltip: 'Elimina periodo', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(context, ref, data.requireValue.$1)),
+        ],
       ),
       body: AsyncBody(
         value: data,

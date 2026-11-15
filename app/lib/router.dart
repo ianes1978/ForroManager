@@ -83,6 +83,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/pagamenti/:id',
         builder: (_, s) => PaymentDetailScreen(paymentId: int.parse(s.pathParameters['id']!)),
       ),
+      GoRoute(
+        path: '/pagamenti/:id/modifica',
+        builder: (_, s) => CollectScreen(editPaymentId: int.parse(s.pathParameters['id']!)),
+      ),
       GoRoute(path: '/altro/tariffe', builder: (_, _) => const FeesScreen()),
       GoRoute(path: '/altro/corsi', builder: (_, _) => const CoursesScreen()),
       GoRoute(

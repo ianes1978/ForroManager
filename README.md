@@ -86,8 +86,11 @@ La specifica è generata dalle stesse definizioni usate per validare le richiest
   sono salvate per utente e l'hash si aggiorna da solo se vengono aumentate.
 - **Sessioni**: token casuale, nel database solo il suo hash; durata 30 giorni
   rinnovata con l'uso; revocabili. Blocco di 15 minuti dopo 5 errori di login.
-- **Pagamenti** mai cancellati: si annullano con un motivo. Ogni modifica
-  finisce nel registro (`audit_log`).
+- **Pagamenti** mai cancellati: si correggono (data, metodo, nota, importo, voci
+  e socio, con `If-Match`) oppure si annullano con un motivo se registrati per
+  errore. Ogni modifica finisce nel registro (`audit_log`) con il prima e il dopo.
+- **Corsi e periodi** si eliminano solo se non hanno iscritti né pagamenti
+  (ad esempio creati per sbaglio); altrimenti si disattivano.
 - **Magazzino**: le scorte sono la somma dei movimenti (carichi, vendite, resi,
   rettifiche), per variante di prodotto. Una vendita scala la scorta, l'annullamento
   la rimette. Si può vendere oltre la scorta: l'app avvisa e la scorta va in negativo.

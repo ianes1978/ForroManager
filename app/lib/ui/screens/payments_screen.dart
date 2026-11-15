@@ -141,7 +141,15 @@ class PaymentDetailScreen extends ConsumerWidget {
           for (final a in p.allocations) ListTile(title: Text(a.label), trailing: Text(euro(a.amountCents))),
           if (!p.voided) ...[
             const SizedBox(height: 24),
-            const Text('I pagamenti non si cancellano. Per correggerne uno, annullalo indicando il motivo e registrane uno nuovo.'),
+            FilledButton.tonalIcon(
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Modifica pagamento'),
+              onPressed: () => context.push('/pagamenti/${p.id}/modifica'),
+            ),
+            const SizedBox(height: 8),
+            Text(p.memberId == null
+                ? 'Puoi correggere importo, data, metodo e nota. Ogni modifica resta nel registro.'
+                : 'Puoi correggere importo, data, metodo, nota, voci pagate e anche il socio. Ogni modifica resta nel registro. Annulla il pagamento solo se è stato registrato per errore.'),
             const SizedBox(height: 12),
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),

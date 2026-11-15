@@ -59,6 +59,28 @@ class FakeRepository extends Repository {
   final saleKeys = <String?>[];
   bool failNextPaymentWithNetwork = false;
 
+  Payment? paymentDetail;
+  Map<String, Object?>? lastUpdate;
+
+  @override
+  Future<Payment> payment(int id) async => paymentDetail!;
+
+  @override
+  Future<Payment> updatePayment(int id,
+      {int? memberId, required int amountCents, required String method, required String paidOn, List<PayItem>? items, String? note, String? version}) async {
+    lastUpdate = {
+      'id': id,
+      'memberId': memberId,
+      'amountCents': amountCents,
+      'method': method,
+      'paidOn': paidOn,
+      'items': items == null ? null : [for (final i in items) i.toJson()],
+      'note': note,
+      'version': version,
+    };
+    return paymentDetail!;
+  }
+
   List<AppUser> usersList = [];
   final deletedUsers = <int>[];
 

@@ -9,23 +9,38 @@ import '../widgets/common.dart';
 
 /// Voce selezionabile nel passo 2: quota esistente o mese futuro da creare.
 class _Choice {
-  _Choice.due(Due d)
+  /// [inPayment]: importo già coperto dal pagamento che si sta correggendo.
+  _Choice.due(Due d, {int inPayment = 0})
       : key = 'd${d.id}',
         item = ExistingDueItem(d.id),
         label = d.label,
-        amountCents = d.remainingCents,
+        amountCents = d.remainingCents + inPayment,
         kind = d.kind,
         year = d.year,
         month = d.month,
         pure = d.paidCents == 0 && !d.isReduced,
-        status = d.status;
+        status = d.status,
+        inPayment = inPayment > 0;
+  /// Voce del pagamento da correggere che non compare tra le quote dell'anno.
+  _Choice.allocation(PaymentAllocation a)
+      : key = 'd${a.dueId}',
+        item = ExistingDueItem(a.dueId),
+        label = a.label,
+        amountCents = a.amountCents,
+        kind = 'voce',
+        year = 0,
+        month = null,
+        pure = false,
+        status = 'pagata',
+        inPayment = true;
   _Choice.month(this.year, int this.month, this.amountCents)
       : key = 'm$year-$month',
         item = NewMonthItem(year, month),
         label = 'Mensile ${mesi[month - 1]} $year',
         kind = 'mensile',
         pure = true,
-        status = 'futura';
+        status = 'futura',
+        inPayment = false;
 
   final String key;
   final PayItem item;
@@ -36,13 +51,17 @@ class _Choice {
   final int? month;
   final bool pure;
   final String status;
+  final bool inPayment;
 }
 
 /// Registrazione rapida di un pagamento in tre passi: chi paga, cosa paga, conferma.
+/// Con [editPaymentId] corregge un pagamento esistente: si parte dalla conferma
+/// già compilata e tornando indietro si possono cambiare le voci o il socio.
 class CollectScreen extends ConsumerStatefulWidget {
-  const CollectScreen({super.key, this.memberId, this.dueId});
+  const CollectScreen({super.key, this.memberId, this.dueId, this.editPaymentId});
   final int? memberId;
   final int? dueId;
+  final int? editPaymentId;
   @override
   ConsumerState<CollectScreen> createState() => _CollectScreenState();
 }
@@ -52,6 +71,7 @@ class _CollectScreenState extends ConsumerState<CollectScreen> {
   final Set<String> _selected = {};
   bool _step3 = false;
   bool _preselected = false;
+  Payment? _editing;
 
   @override
   void initState() {
@@ -61,10 +81,42 @@ class _CollectScreenState extends ConsumerState<CollectScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.editPaymentId != null && _editing == null) {
+      final payment = ref.watch(paymentProvider(widget.editPaymentId!));
+      return Scaffold(
+        appBar: AppBar(title: const Text('Correggi pagamento')),
+        body: AsyncBody(
+          value: payment,
+          onRetry: () => ref.invalidate(paymentProvider(widget.editPaymentId!)),
+          builder: (p) {
+            // Prima apertura: socio, voci e dati del pagamento già scelti.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted || _editing != null) return;
+              setState(() {
+                _editing = p;
+                _memberId = p.memberId;
+                _selected.addAll(p.allocations.map((a) => 'd${a.dueId}'));
+                _step3 = true;
+              });
+            });
+            return const Center(child: CircularProgressIndicator());
+          },
+        ),
+      );
+    }
+    final editing = _editing;
+    if (editing != null && editing.memberId == null) {
+      // Vendita a non socio: si correggono solo importo, data, metodo e nota.
+      return Scaffold(
+        appBar: AppBar(title: const Text('Correggi pagamento')),
+        body: _Confirm(memberId: null, memberName: 'Non socio', choices: [for (final a in editing.allocations) _Choice.allocation(a)], packages: const [], editing: editing),
+      );
+    }
+    final prefix = editing == null ? 'Incassa' : 'Correggi';
     final title = switch ((_memberId, _step3)) {
-      (null, _) => 'Incassa · chi paga?',
-      (_, false) => 'Incassa · cosa paga?',
-      _ => 'Incassa · conferma',
+      (null, _) => '$prefix · chi paga?',
+      (_, false) => '$prefix · cosa paga?',
+      _ => '$prefix · conferma',
     };
     return Scaffold(
       appBar: AppBar(
@@ -73,6 +125,7 @@ class _CollectScreenState extends ConsumerState<CollectScreen> {
           if (_step3) {
             setState(() => _step3 = false);
           } else if (_memberId != null && widget.memberId == null) {
+            // Correggendo si può anche spostare il pagamento su un altro socio.
             setState(() {
               _memberId = null;
               _selected.clear();
@@ -101,6 +154,8 @@ class _CollectScreenState extends ConsumerState<CollectScreen> {
                 ..clear()
                 ..addAll(keys)),
               onNext: () => setState(() => _step3 = true),
+              editing: editing != null && editing.memberId == _memberId ? editing : null,
+              editingAny: editing,
             ),
     );
   }
@@ -166,6 +221,8 @@ class _PickDues extends ConsumerWidget {
     required this.onToggle,
     required this.onSet,
     required this.onNext,
+    this.editing,
+    this.editingAny,
   });
   final int memberId;
   final Set<String> selected;
@@ -175,6 +232,10 @@ class _PickDues extends ConsumerWidget {
   final ValueChanged<String> onToggle;
   final ValueChanged<Iterable<String>> onSet;
   final VoidCallback onNext;
+  /// Pagamento da correggere, se è dello stesso socio (le sue voci restano sceglibili).
+  final Payment? editing;
+  /// Pagamento da correggere, anche se si sta spostando su un altro socio.
+  final Payment? editingAny;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -188,8 +249,12 @@ class _PickDues extends ConsumerWidget {
       onRetry: () => invalidateData(ref),
       builder: (d) {
         final m = member.value;
+
+        final covered = {for (final a in editing?.allocations ?? const <PaymentAllocation>[]) a.dueId: a.amountCents};
         final choices = <_Choice>[
-          for (final due in d.items.where((x) => x.isOpen)) _Choice.due(due),
+          for (final due in d.items.where((x) => x.isOpen || covered.containsKey(x.id))) _Choice.due(due, inPayment: covered[due.id] ?? 0),
+          for (final a in editing?.allocations ?? const <PaymentAllocation>[])
+            if (!d.items.any((x) => x.id == a.dueId)) _Choice.allocation(a),
         ];
         // Mesi futuri pagabili in anticipo (i prossimi 4, se non esistono già).
         if (m != null && m.active) {
@@ -206,7 +271,7 @@ class _PickDues extends ConsumerWidget {
           }
         }
         choices.sort((a, b) {
-          int rank(_Choice c) => c.kind == 'annuale' ? 0 : c.kind == 'prodotto' ? 2 : 1;
+          int rank(_Choice c) => c.kind == 'annuale' ? 0 : c.kind == 'prodotto' || c.kind == 'voce' ? 2 : 1;
           if (rank(a) != rank(b)) return rank(a) - rank(b);
           if (a.year != b.year) return a.year - b.year;
           return (a.month ?? 0) - (b.month ?? 0);
@@ -220,7 +285,8 @@ class _PickDues extends ConsumerWidget {
             memberId: memberId,
             memberName: m?.fullName ?? '',
             choices: choices.where((c) => selected.contains(c.key)).toList(),
-            packages: (fees.value ?? const <Fee>[]).where((f) => f.kind == 'pacchetto' && f.active && f.amountCents != null).toList(),
+            packages: editingAny != null ? const [] : (fees.value ?? const <Fee>[]).where((f) => f.kind == 'pacchetto' && f.active && f.amountCents != null).toList(),
+            editing: editingAny,
           );
         }
         final total = choices.where((c) => selected.contains(c.key)).fold(0, (s, c) => s + c.amountCents);
@@ -248,7 +314,7 @@ class _PickDues extends ConsumerWidget {
                         onChanged: (_) => onToggle(c.key),
                         title: Text(c.label),
                         subtitle: Text(euro(c.amountCents)),
-                        secondary: switch (c.status) {
+                        secondary: c.inPayment ? const StatusBadge('In questo pagamento') : switch (c.status) {
                           'da_pagare' || 'parziale' => StatusBadge(c.kind == 'prodotto' ? 'Da saldare' : 'Arretrata', tone: c.kind == 'prodotto' ? Tone.warn : Tone.bad),
                           _ => const StatusBadge('Anticipo'),
                         },
@@ -279,8 +345,10 @@ class _PickDues extends ConsumerWidget {
 }
 
 class _Confirm extends ConsumerStatefulWidget {
-  const _Confirm({required this.memberId, required this.memberName, required this.choices, required this.packages});
-  final int memberId;
+  const _Confirm({required this.memberId, required this.memberName, required this.choices, required this.packages, this.editing});
+  /// Null solo correggendo una vendita a non socio.
+  final int? memberId;
+  final Payment? editing;
   final String memberName;
   final List<_Choice> choices;
   final List<Fee> packages;
@@ -297,6 +365,18 @@ class _ConfirmState extends ConsumerState<_Confirm> {
   bool _usePackage = true;
   bool _busy = false;
   int? _lastTotal;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.editing;
+    if (e != null) {
+      _method = e.methodCode;
+      _paidOn = e.paidOn;
+      _note.text = e.note ?? '';
+      _usePackage = false;
+    }
+  }
 
   Fee? get _package {
     final months = widget.choices.where((c) => c.kind == 'mensile').toList();
@@ -320,13 +400,37 @@ class _ConfirmState extends ConsumerState<_Confirm> {
     setState(() => _busy = true);
     final pkg = _usePackage ? _package : null;
     final note = _note.text.trim().isEmpty ? null : _note.text.trim();
+    final editing = widget.editing;
+    if (editing != null) {
+      final ok = await runAction(
+        context,
+        () => ref.read(repositoryProvider).updatePayment(
+              editing.id,
+              memberId: widget.memberId,
+              amountCents: cents,
+              method: _method,
+              paidOn: _paidOn,
+              items: widget.memberId == null ? null : [for (final c in widget.choices) c.item],
+              note: note,
+              version: editing.updatedAt,
+            ),
+        success: 'Pagamento corretto.',
+      );
+      if (!mounted) return;
+      setState(() => _busy = false);
+      if (ok) {
+        invalidateData(ref);
+        context.pop();
+      }
+      return;
+    }
     // Stessa operazione = stessa chiave: un nuovo tentativo dopo un errore di rete non la registra due volte.
     final keys = ref.read(operationKeysProvider);
     final signature = 'pagamento|${widget.memberId}|${widget.choices.map((c) => c.key).join(',')}|$cents|$_method|$_paidOn|${pkg?.categoryId}|$note';
     final ok = await runAction(
       context,
       () => ref.read(repositoryProvider).createPayment(
-            memberId: widget.memberId,
+            memberId: widget.memberId!,
             amountCents: cents,
             method: _method,
             paidOn: _paidOn,
@@ -352,8 +456,13 @@ class _ConfirmState extends ConsumerState<_Confirm> {
     final pkg = _package;
     final total = _total;
     if (_lastTotal != total) {
+      // Correggendo si parte dall'importo registrato; cambiando le voci si riparte dal totale.
+      final e = widget.editing;
+      final sameItems = e != null &&
+          widget.choices.map((c) => c.key).toSet().containsAll(e.allocations.map((a) => 'd${a.dueId}')) &&
+          widget.choices.length == e.allocations.length;
+      _amount.text = centsToInput(_lastTotal == null && sameItems ? e.amountCents : total);
       _lastTotal = total;
-      _amount.text = centsToInput(total);
     }
     return Form(
       key: _form,
@@ -388,7 +497,7 @@ class _ConfirmState extends ConsumerState<_Confirm> {
         const SizedBox(height: 16),
         methods.when(
           data: (list) => Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final m in list.where((m) => m.active))
+            for (final m in list.where((m) => m.active || m.code == widget.editing?.methodCode))
               ChoiceChip(label: Text(m.label), selected: _method == m.code, onSelected: (_) => setState(() => _method = m.code)),
           ]),
           loading: () => const LinearProgressIndicator(),
@@ -406,7 +515,7 @@ class _ConfirmState extends ConsumerState<_Confirm> {
         ),
         TextField(controller: _note, decoration: const InputDecoration(labelText: 'Nota (facoltativa)')),
         const SizedBox(height: 24),
-        FilledButton(onPressed: _busy ? null : _save, child: const Text('Registra pagamento')),
+        FilledButton(onPressed: _busy ? null : _save, child: Text(widget.editing == null ? 'Registra pagamento' : 'Salva modifiche')),
       ]),
     );
   }
