@@ -12,7 +12,7 @@ export const SUMMARY_CTE = `
            d.amount_cents - COALESCE((SELECT SUM(a.amount_cents) FROM payment_allocations a
                                         JOIN payments p ON p.id = a.payment_id
                                        WHERE a.due_id = d.id AND p.voided_at IS NULL), 0) AS remaining
-      FROM dues d WHERE d.cancelled_at IS NULL
+      FROM dues d WHERE d.cancelled_at IS NULL AND d.member_id IS NOT NULL
   ),
   member_summary AS (
     SELECT member_id,

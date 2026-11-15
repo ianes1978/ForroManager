@@ -7,7 +7,7 @@ import { conflict, invalid, notFound } from "../lib/errors.ts";
 import { DateSchema, IdParam, YearSchema, bearer, commonErrors, createRouter, errors, json } from "../lib/http.ts";
 import { nowIso, todayIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
-import { findProduct } from "./products.ts";
+import { prepareSale, restockStatement, runBatch } from "../data/sales.ts";
 
 export const SummarySchema = z
   .object({
@@ -99,13 +99,23 @@ const chargeRoute = createRoute({
     body: json(
       z.object({
         productId: z.number().int().positive(),
-        amountCents: z.number().int().min(0).max(10_000_000).optional(),
+        variantId: z.number().int().positive().optional().openapi({ description: "Obbligatoria per i prodotti con scorte" }),
+        quantity: z.number().int().min(1).max(99).default(1),
+        amountCents: z.number().int().min(0).max(10_000_000).optional().openapi({ description: "Totale; se diverso da prezzo × quantità serve il motivo" }),
         reason: z.string().trim().max(200).optional(),
         chargedOn: DateSchema.optional(),
       }),
     ),
   },
-  responses: { 201: { description: "Addebito creato", ...json(DueSchema) }, ...commonErrors, 404: errors[404], 409: errors[409] },
+  responses: {
+    201: {
+      description: "Addebito creato",
+      ...json(DueSchema.extend({ stockAfter: z.number().int().nullable().openapi({ description: "Scorta rimasta della variante; negativa se si è venduto oltre la scorta" }) }).openapi("Charge")),
+    },
+    ...commonErrors,
+    404: errors[404],
+    409: errors[409],
+  },
 });
 
 /** Data limite (esclusa) per l'iscrizione: il socio deve essere iscritto prima della fine del periodo. */
@@ -225,8 +235,10 @@ dueRoutes
     const me = c.get("user").id;
     const due = await findDue(db, id);
     if (due.paid_cents > 0) throw conflict("has_payments", "La quota ha dei pagamenti: annulla prima i pagamenti.");
+    const restock = restockStatement(db, due, me, todayIso());
     await db.batch([
       db.prepare("UPDATE dues SET cancelled_at = ?1, cancelled_by = ?2, cancel_reason = ?3 WHERE id = ?4").bind(nowIso(), me, reason, id),
+      ...(restock ? [restock] : []),
       auditStatement(db, me, "cancel", "due", id, { memberId: due.member_id, reason }),
     ]);
     return c.body(null, 204);
@@ -239,20 +251,17 @@ dueRoutes
     const member = await db.prepare("SELECT status FROM members WHERE id = ?1").bind(id).first<{ status: string }>();
     if (!member) throw notFound("Socio non trovato.");
     if (member.status !== "attivo") throw conflict("member_ceased", "Il socio è cessato.");
-    const product = await findProduct(db, body.productId);
-    if (product.active !== 1) throw conflict("product_inactive", "Il prodotto non è più disponibile.");
-    const amount = body.amountCents ?? product.price_cents;
-    if (amount !== product.price_cents && !body.reason) {
-      throw invalid("Indica il motivo del prezzo diverso.", [{ field: "reason", message: "Obbligatorio se il prezzo è diverso dal listino." }]);
-    }
-    const chargedOn = body.chargedOn ?? todayIso();
-    const row = await db
-      .prepare(
-        `INSERT INTO dues (member_id, kind, year, product_id, base_amount_cents, amount_cents, adjustment_reason, charged_on, created_at, created_by)
-         VALUES (?1, 'prodotto', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) RETURNING id`,
-      )
-      .bind(id, Number(chargedOn.slice(0, 4)), product.id, product.price_cents, amount, amount === product.price_cents ? null : body.reason, chargedOn, nowIso(), me)
-      .first<{ id: number }>();
-    await auditStatement(db, me, "create", "due", row!.id, { memberId: id, productId: product.id, amountCents: amount }).run();
-    return c.json(toDue(await findDue(db, row!.id), todayIso()), 201);
+    const sale = await prepareSale(db, {
+      memberId: id,
+      buyerName: null,
+      productId: body.productId,
+      variantId: body.variantId,
+      quantity: body.quantity,
+      amountCents: body.amountCents,
+      reason: body.reason,
+      chargedOn: body.chargedOn ?? todayIso(),
+      userId: me,
+    });
+    await runBatch(db, sale.statements);
+    return c.json({ ...toDue(await findDue(db, sale.dueId), todayIso()), stockAfter: sale.stockAfter }, 201);
   });

@@ -102,8 +102,25 @@ export function allocate(amountCents: number, dues: { id: number; remainingCents
 
 const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
 
-export function dueLabel(d: { kind: DueKind; year: number; month: number | null; productName?: string | null }): string {
-  if (d.kind === "prodotto") return d.productName ?? "Prodotto";
+export function dueLabel(d: {
+  kind: DueKind;
+  year: number;
+  month: number | null;
+  productName?: string | null;
+  variantLabel?: string | null;
+  quantity?: number;
+}): string {
+  if (d.kind === "prodotto") {
+    const variant = d.variantLabel ? ` (${d.variantLabel})` : "";
+    const qty = (d.quantity ?? 1) > 1 ? ` ×${d.quantity}` : "";
+    return `${d.productName ?? "Prodotto"}${variant}${qty}`;
+  }
   if (d.kind === "annuale") return `Quota associativa ${d.year}`;
   return `Mensile ${MESI[d.month! - 1]} ${d.year}`;
+}
+
+/** Etichetta di una variante: "M · nero"; null per la variante unica (senza taglia né colore). */
+export function variantLabel(size: string, color: string): string | null {
+  const text = [size, color].filter((x) => x.trim() !== "").join(" · ");
+  return text === "" ? null : text;
 }
