@@ -1,11 +1,12 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { type DueRow, PERIOD_LABEL_SQL, VARIANT_LABEL_SQL, memberDues } from "../data/dues.ts";
+import { DUE_SELECT, type DueRow, PERIOD_LABEL_SQL, VARIANT_LABEL_SQL, memberDues } from "../data/dues.ts";
 import { restockStatement } from "../data/sales.ts";
 import { allocate, compareForAllocation, dueLabel, type DueKind, splitCents } from "../domain/dues.ts";
 import { isSuspended, periodOf } from "../domain/periods.ts";
 import { auditStatement } from "../lib/audit.ts";
 import { conflict, invalid, notFound } from "../lib/errors.ts";
-import { DateSchema, IdParam, bearer, commonErrors, createRouter, errors, IdempotencyHeaders, json } from "../lib/http.ts";
+import { assertNotModified } from "../lib/concurrency.ts";
+import { DateSchema, IdParam, IfMatchHeaders, bearer, commonErrors, createRouter, errors, IdempotencyHeaders, json } from "../lib/http.ts";
 import { nowIso, todayIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { idempotent } from "../middleware/idempotency.ts";
@@ -33,6 +34,7 @@ export const PaymentSchema = z
     voidReason: z.string().nullable(),
     allocations: z.array(AllocationSchema),
     description: z.string().openapi({ example: "Mensili ottobre–dicembre 2026" }),
+    updatedAt: z.string().openapi({ description: "Versione da rimandare in If-Match per modificarlo" }),
   })
   .openapi("Payment");
 
@@ -55,6 +57,20 @@ const CreatePaymentSchema = z.object({
   packageCategoryId: z.number().int().positive().optional().openapi({ description: "Applica il prezzo di un pacchetto ai mesi scelti" }),
 });
 
+const UpdatePaymentSchema = z.object({
+  memberId: z.number().int().positive().optional().openapi({ description: "Per spostare il pagamento su un altro socio (servono anche le voci)" }),
+  paidOn: DateSchema,
+  amountCents: z.number().int("L'importo va indicato in centesimi.").positive("L'importo deve essere maggiore di zero.").max(10_000_000),
+  method: z.string().min(1).max(30),
+  note: z.string().trim().max(500).nullable().optional(),
+  items: z
+    .array(ItemSchema)
+    .min(1, "Scegli almeno una voce da pagare.")
+    .max(12, "Al massimo 12 voci per pagamento.")
+    .optional()
+    .openapi({ description: "Nuove voci coperte; se omesse restano quelle attuali" }),
+});
+
 // ---------------------------------------------------------------------------
 // Lettura
 // ---------------------------------------------------------------------------
@@ -73,6 +89,7 @@ interface PaymentRow {
   created_at: string;
   voided_at: string | null;
   void_reason: string | null;
+  updated_at: string;
 }
 
 interface AllocationRow {
@@ -91,7 +108,7 @@ interface AllocationRow {
 const PAYMENT_SELECT = `
   SELECT p.id, p.member_id, m.first_name, m.last_name, p.paid_on, p.amount_cents,
          pm.code AS method_code, pm.label AS method_label, p.note, p.recorded_by, u.name AS recorded_by_name,
-         p.created_at, p.voided_at, p.void_reason
+         p.created_at, p.voided_at, p.void_reason, COALESCE(p.updated_at, p.created_at) AS updated_at
     FROM payments p
     LEFT JOIN members m ON m.id = p.member_id
     JOIN payment_methods pm ON pm.id = p.method_id
@@ -155,6 +172,7 @@ function toPayment(r: PaymentRow, allocs: AllocationRow[]): z.infer<typeof Payme
       amountCents: a.amount_cents,
     })),
     description: describeAllocations(allocs),
+    updatedAt: r.updated_at,
   };
 }
 
@@ -222,6 +240,17 @@ const voidRoute = createRoute({
   responses: { 200: { description: "Pagamento annullato", ...json(PaymentSchema) }, ...commonErrors, 404: errors[404], 409: errors[409] },
 });
 
+const updateRoute = createRoute({
+  method: "put",
+  path: "/payments/{id}",
+  tags: ["Pagamenti"],
+  summary: "Corregge un pagamento: data, metodo, nota, importo, socio e voci pagate",
+  description: "Le voci vengono ripartite di nuovo come in un nuovo pagamento. Il registro delle modifiche conserva i dati precedenti.",
+  security: bearer,
+  request: { headers: IfMatchHeaders, params: IdParam, body: json(UpdatePaymentSchema) },
+  responses: { 200: { description: "Pagamento corretto", ...json(PaymentSchema) }, ...commonErrors, 404: errors[404], 409: errors[409] },
+});
+
 const methodsRoute = createRoute({
   method: "get",
   path: "/payment-methods",
@@ -283,6 +312,140 @@ const slug = (label: string) =>
     .replace(/^_|_$/g, "")
     .slice(0, 30) || "metodo";
 
+interface MemberInfo {
+  id: number;
+  status: string;
+  monthly_category_id: number;
+}
+
+async function loadMember(db: D1Database, id: number): Promise<MemberInfo> {
+  const member = await db.prepare("SELECT id, status, monthly_category_id FROM members WHERE id = ?1").bind(id).first<MemberInfo>();
+  if (!member) throw notFound("Socio non trovato.");
+  return member;
+}
+
+/** Metodo attivo; quello già usato dal pagamento resta valido anche se nel frattempo è stato disattivato. */
+async function findMethod(db: D1Database, code: string, currentCode?: string): Promise<{ id: number }> {
+  const method = await db
+    .prepare("SELECT id FROM payment_methods WHERE code = ?1 AND (active = 1 OR code = ?2)")
+    .bind(code, currentCode ?? null)
+    .first<{ id: number }>();
+  if (!method) throw invalid("Metodo di pagamento non valido.", [{ field: "method", message: "Scegli un metodo attivo." }]);
+  return method;
+}
+
+type Item = z.infer<typeof ItemSchema>;
+
+/** Trasforma le voci richieste in quote da coprire, nell'ordine in cui vanno coperte. */
+async function resolveItems(db: D1Database, member: MemberInfo, dues: DueRow[], items: Item[], paidOn: string): Promise<Planned[]> {
+  const suspensions = (
+    await db
+      .prepare("SELECT from_period AS f, to_period AS t FROM member_suspensions WHERE member_id = ?1 AND cancelled_at IS NULL")
+      .bind(member.id)
+      .all<{ f: number; t: number }>()
+  ).results.map((s) => ({ from: s.f, to: s.t }));
+  const planned: Planned[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    if ("dueId" in item) {
+      const due = dues.find((d) => d.id === item.dueId);
+      if (!due) throw notFound("Una delle quote scelte non esiste o non appartiene al socio.");
+      if (seen.has(`d${due.id}`) || (due.month && seen.has(`m${due.year}-${due.month}`))) throw invalid("Hai scelto due volte la stessa voce.");
+      seen.add(`d${due.id}`);
+      if (due.month) seen.add(`m${due.year}-${due.month}`);
+      if (due.paid_cents >= due.amount_cents) throw conflict("due_already_paid", "Una delle quote scelte è già pagata.");
+      planned.push({
+        existing: due,
+        kind: due.kind,
+        year: due.year,
+        month: due.month,
+        chargedOn: due.charged_on,
+        sortId: due.id,
+        categoryId: due.category_id,
+        baseAmountCents: due.base_amount_cents,
+        amountCents: due.amount_cents,
+        paidCents: due.paid_cents,
+        adjustmentReason: due.adjustment_reason,
+        label: dueLabel({ kind: due.kind, year: due.year, month: due.month, productName: due.product_name, periodLabel: due.period_label }),
+      });
+    } else {
+      const key = `m${item.year}-${item.month}`;
+      if (seen.has(key)) throw invalid("Hai scelto due volte lo stesso mese.");
+      seen.add(key);
+      const label = dueLabel({ kind: "mensile", year: item.year, month: item.month });
+      const existing = dues.find((d) => d.kind === "mensile" && d.year === item.year && d.month === item.month);
+      if (existing) throw conflict("due_exists", `${label} esiste già: sceglila dall'elenco delle quote.`);
+      if (member.status !== "attivo") throw conflict("member_ceased", "Il socio è cessato: non si possono creare nuove quote.");
+      if (isSuspended(periodOf(item.year, item.month), suspensions)) throw conflict("suspended_month", `${label}: il socio è sospeso.`);
+      const rate = await db
+        .prepare("SELECT amount_cents FROM fee_rates WHERE category_id = ?1 AND year = ?2")
+        .bind(member.monthly_category_id, item.year)
+        .first<{ amount_cents: number }>();
+      if (!rate) throw invalid(`Manca l'importo della quota mensile per il ${item.year}.`, [{ field: "items", message: "Tariffa mancante." }]);
+      planned.push({
+        existing: null,
+        kind: "mensile",
+        year: item.year,
+        month: item.month,
+        chargedOn: paidOn,
+        sortId: Number.MAX_SAFE_INTEGER,
+        categoryId: member.monthly_category_id,
+        baseAmountCents: rate.amount_cents,
+        amountCents: rate.amount_cents,
+        paidCents: 0,
+        adjustmentReason: null,
+        label,
+      });
+    }
+  }
+  return planned.sort((a, b) =>
+    compareForAllocation(
+      { kind: a.kind, year: a.year, month: a.month, chargedOn: a.chargedOn, id: a.sortId },
+      { kind: b.kind, year: b.year, month: b.month, chargedOn: b.chargedOn, id: b.sortId },
+    ),
+  );
+}
+
+/** Quote nuove (mesi pagati in anticipo) e riduzioni da pacchetto, da scrivere prima del pagamento. */
+function newDueStatements(
+  db: D1Database, memberId: number, planned: Planned[], adjusted: Set<Planned>, paidOn: string, now: string, me: number,
+): D1PreparedStatement[] {
+  const statements: D1PreparedStatement[] = [];
+  for (const p of planned) {
+    if (!p.existing) {
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO dues (member_id, kind, year, month, category_id, base_amount_cents, amount_cents, adjustment_reason, charged_on, created_at, created_by)
+             VALUES (?, 'mensile', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(memberId, p.year, p.month, p.categoryId, p.baseAmountCents, p.amountCents, p.adjustmentReason, paidOn, now, me),
+      );
+    } else if (adjusted.has(p)) {
+      statements.push(db.prepare("UPDATE dues SET amount_cents = ?, adjustment_reason = ? WHERE id = ?").bind(p.amountCents, p.adjustmentReason, p.existing.id));
+    }
+  }
+  return statements;
+}
+
+function allocationStatements(
+  db: D1Database, paymentId: number, memberId: number | null, planned: Planned[], allocations: { dueId: number; amountCents: number }[],
+): D1PreparedStatement[] {
+  return allocations.map((a) => {
+    const p = planned[a.dueId]!;
+    // Le quote create nella stessa transazione si ritrovano per socio e mese.
+    const ref = p.existing
+      ? { sql: "?", params: [p.existing.id] }
+      : {
+          sql: "(SELECT id FROM dues WHERE member_id = ? AND kind = 'mensile' AND year = ? AND month = ? AND cancelled_at IS NULL)",
+          params: [memberId, p.year, p.month],
+        };
+    return db.prepare(`INSERT INTO payment_allocations (payment_id, due_id, amount_cents) VALUES (?, ${ref.sql}, ?)`).bind(paymentId, ...ref.params, a.amountCents);
+  });
+}
+
+const formatEuro = (cents: number) => `${(cents / 100).toFixed(2).replace(".", ",")} €`;
+
 export const paymentRoutes = createRouter();
 paymentRoutes.use("/payments", requireAuth);
 paymentRoutes.use("/payments/*", requireAuth);
@@ -329,86 +492,12 @@ paymentRoutes
     const today = todayIso();
     const paidOn = body.paidOn ?? today;
 
-    const member = await db
-      .prepare("SELECT id, status, monthly_category_id FROM members WHERE id = ?1")
-      .bind(body.memberId)
-      .first<{ id: number; status: string; monthly_category_id: number }>();
-    if (!member) throw notFound("Socio non trovato.");
-    const method = await db
-      .prepare("SELECT id FROM payment_methods WHERE code = ?1 AND active = 1")
-      .bind(body.method)
-      .first<{ id: number }>();
-    if (!method) throw invalid("Metodo di pagamento non valido.", [{ field: "method", message: "Scegli un metodo attivo." }]);
-
+    const member = await loadMember(db, body.memberId);
+    const method = await findMethod(db, body.method);
     const dues = await memberDues(db, member.id);
-    const suspensions = (
-      await db
-        .prepare("SELECT from_period AS f, to_period AS t FROM member_suspensions WHERE member_id = ?1 AND cancelled_at IS NULL")
-        .bind(member.id)
-        .all<{ f: number; t: number }>()
-    ).results.map((s) => ({ from: s.f, to: s.t }));
 
     // 1. Risolve le voci richieste.
-    const planned: Planned[] = [];
-    const seen = new Set<string>();
-    for (const item of body.items) {
-      if ("dueId" in item) {
-        const due = dues.find((d) => d.id === item.dueId);
-        if (!due) throw notFound("Una delle quote scelte non esiste o non appartiene al socio.");
-        if (seen.has(`d${due.id}`) || (due.month && seen.has(`m${due.year}-${due.month}`))) throw invalid("Hai scelto due volte la stessa voce.");
-        seen.add(`d${due.id}`);
-        if (due.month) seen.add(`m${due.year}-${due.month}`);
-        if (due.paid_cents >= due.amount_cents) throw conflict("due_already_paid", "Una delle quote scelte è già pagata.");
-        planned.push({
-          existing: due,
-          kind: due.kind,
-          year: due.year,
-          month: due.month,
-          chargedOn: due.charged_on,
-          sortId: due.id,
-          categoryId: due.category_id,
-          baseAmountCents: due.base_amount_cents,
-          amountCents: due.amount_cents,
-          paidCents: due.paid_cents,
-          adjustmentReason: due.adjustment_reason,
-          label: dueLabel({ kind: due.kind, year: due.year, month: due.month, productName: due.product_name, periodLabel: due.period_label }),
-        });
-      } else {
-        const key = `m${item.year}-${item.month}`;
-        if (seen.has(key)) throw invalid("Hai scelto due volte lo stesso mese.");
-        seen.add(key);
-        const label = dueLabel({ kind: "mensile", year: item.year, month: item.month });
-        const existing = dues.find((d) => d.kind === "mensile" && d.year === item.year && d.month === item.month);
-        if (existing) throw conflict("due_exists", `${label} esiste già: sceglila dall'elenco delle quote.`);
-        if (member.status !== "attivo") throw conflict("member_ceased", "Il socio è cessato: non si possono creare nuove quote.");
-        if (isSuspended(periodOf(item.year, item.month), suspensions)) throw conflict("suspended_month", `${label}: il socio è sospeso.`);
-        const rate = await db
-          .prepare("SELECT amount_cents FROM fee_rates WHERE category_id = ?1 AND year = ?2")
-          .bind(member.monthly_category_id, item.year)
-          .first<{ amount_cents: number }>();
-        if (!rate) throw invalid(`Manca l'importo della quota mensile per il ${item.year}.`, [{ field: "items", message: "Tariffa mancante." }]);
-        planned.push({
-          existing: null,
-          kind: "mensile",
-          year: item.year,
-          month: item.month,
-          chargedOn: paidOn,
-          sortId: Number.MAX_SAFE_INTEGER,
-          categoryId: member.monthly_category_id,
-          baseAmountCents: rate.amount_cents,
-          amountCents: rate.amount_cents,
-          paidCents: 0,
-          adjustmentReason: null,
-          label,
-        });
-      }
-    }
-    planned.sort((a, b) =>
-      compareForAllocation(
-        { kind: a.kind, year: a.year, month: a.month, chargedOn: a.chargedOn, id: a.sortId },
-        { kind: b.kind, year: b.year, month: b.month, chargedOn: b.chargedOn, id: b.sortId },
-      ),
-    );
+    const planned = await resolveItems(db, member, dues, body.items, paidOn);
 
     // 2. Pacchetto: prezzo complessivo ripartito sui mesi scelti.
     const adjusted = new Set<Planned>();
@@ -441,7 +530,7 @@ paymentRoutes
     // 3. Ripartizione dell'importo.
     const total = planned.reduce((sum, p) => sum + Math.max(0, p.amountCents - p.paidCents), 0);
     if (body.amountCents > total) {
-      throw conflict("amount_exceeds", `L'importo supera il totale delle voci scelte (${(total / 100).toFixed(2).replace(".", ",")} €).`);
+      throw conflict("amount_exceeds", `L'importo supera il totale delle voci scelte (${formatEuro(total)}).`);
     }
     const allocations = allocate(
       body.amountCents,
@@ -453,41 +542,15 @@ paymentRoutes
     const next = await db.prepare("SELECT COALESCE(MAX(id), 0) + 1 AS id FROM payments").first<{ id: number }>();
     const paymentId = next!.id;
     const now = nowIso();
-    const dueRef = (p: Planned) =>
-      p.existing
-        ? { sql: "?", params: [p.existing.id] }
-        : {
-            sql: "(SELECT id FROM dues WHERE member_id = ? AND kind = 'mensile' AND year = ? AND month = ? AND cancelled_at IS NULL)",
-            params: [member.id, p.year, p.month],
-          };
-    const statements: D1PreparedStatement[] = [];
-    for (const p of planned) {
-      if (!p.existing) {
-        statements.push(
-          db
-            .prepare(
-              `INSERT INTO dues (member_id, kind, year, month, category_id, base_amount_cents, amount_cents, adjustment_reason, charged_on, created_at, created_by)
-               VALUES (?, 'mensile', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            )
-            .bind(member.id, p.year, p.month, p.categoryId, p.baseAmountCents, p.amountCents, p.adjustmentReason, paidOn, now, me),
-        );
-      } else if (adjusted.has(p)) {
-        statements.push(db.prepare("UPDATE dues SET amount_cents = ?, adjustment_reason = ? WHERE id = ?").bind(p.amountCents, p.adjustmentReason, p.existing.id));
-      }
-    }
+    const statements = newDueStatements(db, member.id, planned, adjusted, paidOn, now, me);
     statements.push(
       db
         .prepare(
-          "INSERT INTO payments (id, member_id, paid_on, amount_cents, method_id, note, recorded_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO payments (id, member_id, paid_on, amount_cents, method_id, note, recorded_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(paymentId, member.id, paidOn, body.amountCents, method.id, body.note || null, me, now),
+        .bind(paymentId, member.id, paidOn, body.amountCents, method.id, body.note || null, me, now, now),
     );
-    for (const a of allocations) {
-      const ref = dueRef(planned[a.dueId]!);
-      statements.push(
-        db.prepare(`INSERT INTO payment_allocations (payment_id, due_id, amount_cents) VALUES (?, ${ref.sql}, ?)`).bind(paymentId, ...ref.params, a.amountCents),
-      );
-    }
+    statements.push(...allocationStatements(db, paymentId, member.id, planned, allocations));
     statements.push(
       auditStatement(db, me, "create", "payment", paymentId, {
         memberId: member.id,
@@ -507,6 +570,77 @@ paymentRoutes
     }
     return c.json(await findPayment(db, paymentId), 201);
   })
+  .openapi(updateRoute, async (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const db = c.env.DB;
+    const me = c.get("user").id;
+    const current = await findPayment(db, id);
+    await assertNotModified(c, current.updatedAt, { entity: "payment", entityId: id });
+    if (current.voided) throw conflict("already_voided", "Il pagamento è annullato: non si può modificare.");
+    const method = await findMethod(db, body.method, current.method.code);
+    const keepItems = current.allocations.map((a) => ({ dueId: a.dueId }));
+
+    // Quote coperte e pagato già ricevuto, senza contare questo pagamento.
+    let memberId: number | null = current.memberId;
+    let planned: Planned[];
+    if (current.memberId === null) {
+      // Vendita a non socio: si correggono importo, data, metodo e nota, non le voci.
+      if (body.memberId !== undefined || body.items !== undefined) {
+        throw invalid("Per una vendita a non socio si possono correggere solo importo, data, metodo e nota.");
+      }
+      const { results } = await db
+        .prepare(`${DUE_SELECT} WHERE d.id IN (SELECT due_id FROM payment_allocations WHERE payment_id = ?1)`)
+        .bind(id)
+        .all<DueRow>();
+      const dues = results.map((d) => ({ ...d, paid_cents: d.paid_cents - (current.allocations.find((a) => a.dueId === d.id)?.amountCents ?? 0) }));
+      const remaining = dues.reduce((sum, d) => sum + Math.max(0, d.amount_cents - d.paid_cents), 0);
+      // Il nome dell'acquirente si cancella quando la vendita è saldata: non si può lasciarla di nuovo aperta.
+      if (body.amountCents < remaining && dues.some((d) => d.buyer_name === null)) {
+        throw conflict("sale_must_be_settled", `Questa vendita era saldata: l'importo deve restare ${formatEuro(remaining)}. Se il prezzo era sbagliato, annulla il pagamento e registra di nuovo la vendita.`);
+      }
+      planned = await resolveItems(db, { id: 0, status: "attivo", monthly_category_id: 0 }, dues, keepItems, body.paidOn);
+    } else {
+      memberId = body.memberId ?? current.memberId;
+      if (memberId !== current.memberId && !body.items) throw invalid("Per spostare il pagamento su un altro socio scegli anche le voci.", [{ field: "items", message: "Scegli le voci." }]);
+      const member = await loadMember(db, memberId);
+      const dues = (await memberDues(db, member.id)).map((d) => ({
+        ...d,
+        paid_cents: d.paid_cents - (current.allocations.find((a) => a.dueId === d.id)?.amountCents ?? 0),
+      }));
+      planned = await resolveItems(db, member, dues, body.items ?? keepItems, body.paidOn);
+    }
+
+    const total = planned.reduce((sum, p) => sum + Math.max(0, p.amountCents - p.paidCents), 0);
+    if (body.amountCents > total) {
+      throw conflict("amount_exceeds", `L'importo supera il totale delle voci scelte (${formatEuro(total)}).`);
+    }
+    const allocations = allocate(
+      body.amountCents,
+      planned.map((p, i) => ({ id: i, remainingCents: Math.max(0, p.amountCents - p.paidCents) })),
+    );
+    const now = nowIso();
+    // Versione al millisecondo: due correzioni ravvicinate restano distinguibili.
+    const version = new Date().toISOString();
+    const note = body.note === undefined ? current.note : body.note || null;
+    const statements = memberId === null ? [] : newDueStatements(db, memberId, planned, new Set(), body.paidOn, now, me);
+    statements.push(
+      db.prepare("DELETE FROM payment_allocations WHERE payment_id = ?1").bind(id),
+      db
+        .prepare("UPDATE payments SET member_id = ?1, paid_on = ?2, amount_cents = ?3, method_id = ?4, note = ?5, updated_at = ?6 WHERE id = ?7")
+        .bind(memberId, body.paidOn, body.amountCents, method.id, note, version, id),
+      ...allocationStatements(db, id, memberId, planned, allocations),
+      auditStatement(db, me, "update", "payment", id, {
+        before: {
+          memberId: current.memberId, paidOn: current.paidOn, amountCents: current.amountCents, method: current.method.code, note: current.note,
+          items: current.allocations.map((a) => a.label),
+        },
+        after: { memberId, paidOn: body.paidOn, amountCents: body.amountCents, method: body.method, note, items: planned.map((p) => p.label) },
+      }),
+    );
+    await db.batch(statements);
+    return c.json(await findPayment(db, id), 200);
+  })
   .openapi(voidRoute, async (c) => {
     const { id } = c.req.valid("param");
     const { reason } = c.req.valid("json");
@@ -515,7 +649,7 @@ paymentRoutes
     const current = await findPayment(db, id);
     if (current.voided) throw conflict("already_voided", "Il pagamento è già annullato.");
     const statements = [
-      db.prepare("UPDATE payments SET voided_at = ?1, voided_by = ?2, void_reason = ?3 WHERE id = ?4").bind(nowIso(), me, reason, id),
+      db.prepare("UPDATE payments SET voided_at = ?1, voided_by = ?2, void_reason = ?3, updated_at = ?1 WHERE id = ?4").bind(nowIso(), me, reason, id),
       auditStatement(db, me, "void", "payment", id, { memberId: current.memberId, amountCents: current.amountCents, reason }),
     ];
     // Vendita a non socio pagata: annullando il pagamento si annulla anche la vendita

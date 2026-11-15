@@ -182,6 +182,38 @@ const enrollRoute = createRoute({
   responses: { 200: { description: "Esito", ...json(z.object({ enrolled: z.number().int(), alreadyEnrolled: z.number().int() })) }, ...commonErrors, 404: errors[404], 409: errors[409] },
 });
 
+const deleteCourseRoute = createRoute({
+  method: "delete", path: "/courses/{id}", tags: ["Corsi"], security: bearer,
+  summary: "Elimina un corso senza iscritti né pagamenti (altrimenti si può solo disattivare)",
+  request: { params: IdParam },
+  responses: { 204: { description: "Corso eliminato" }, ...commonErrors, 404: errors[404], 409: errors[409] },
+});
+
+const deletePeriodRoute = createRoute({
+  method: "delete", path: "/course-periods/{periodId}", tags: ["Corsi"], security: bearer,
+  summary: "Elimina un periodo senza iscritti né pagamenti (altrimenti si può solo disattivare)",
+  request: { params: PeriodIdParam },
+  responses: { 204: { description: "Periodo eliminato" }, ...commonErrors, 404: errors[404], 409: errors[409] },
+});
+
+/**
+ * Un periodo è "in uso" se ha iscrizioni attive o se una sua quota, anche annullata,
+ * ha ricevuto pagamenti (anche annullati): lo storico dei pagamenti deve restare
+ * leggibile. Le iscrizioni annullate e mai pagate vengono eliminate con il periodo.
+ */
+const PERIODS_IN_USE = (where: string) => `
+  SELECT
+    (SELECT COUNT(*) FROM dues d WHERE d.kind = 'periodo' AND d.cancelled_at IS NULL AND d.course_period_id IN (${where})) AS enrolled,
+    (SELECT COUNT(*) FROM payment_allocations a JOIN dues d ON d.id = a.due_id WHERE d.kind = 'periodo' AND d.course_period_id IN (${where})) AS payments`;
+
+async function assertDeletable(db: D1Database, where: string, id: number, what: "corso" | "periodo") {
+  const use = await db.prepare(PERIODS_IN_USE(where)).bind(id).first<{ enrolled: number; payments: number }>();
+  if ((use?.enrolled ?? 0) > 0 || (use?.payments ?? 0) > 0) {
+    const reason = (use?.enrolled ?? 0) > 0 ? `ha ${use!.enrolled} ${use!.enrolled === 1 ? "iscritto" : "iscritti"}` : "ha dei pagamenti registrati";
+    throw conflict(`${what === "corso" ? "course" : "period"}_in_use`, `Il ${what} ${reason}: non si può eliminare, ma puoi disattivarlo per nasconderlo.`);
+  }
+}
+
 export const courseRoutes = createRouter();
 for (const path of ["/courses", "/courses/*", "/course-periods/*"]) courseRoutes.use(path, requireAuth);
 
@@ -279,6 +311,32 @@ courseRoutes
     );
     const results = await db.batch(statements);
     return c.json({ period: toPeriod(await findPeriod(db, periodId)), updatedDues: reprice ? (results[1]?.meta.changes ?? 0) : 0 }, 200);
+  })
+  .openapi(deleteCourseRoute, async (c) => {
+    const { id } = c.req.valid("param");
+    const db = c.env.DB;
+    const course = await findCourse(db, id);
+    const periods = "SELECT id FROM course_periods WHERE course_id = ?1";
+    await assertDeletable(db, periods, id, "corso");
+    await db.batch([
+      db.prepare(`DELETE FROM dues WHERE kind = 'periodo' AND course_period_id IN (${periods})`).bind(id),
+      db.prepare("DELETE FROM course_periods WHERE course_id = ?1").bind(id),
+      db.prepare("DELETE FROM courses WHERE id = ?1").bind(id),
+      auditStatement(db, c.get("user").id, "delete", "course", id, { name: course.name }),
+    ]);
+    return c.body(null, 204);
+  })
+  .openapi(deletePeriodRoute, async (c) => {
+    const { periodId } = c.req.valid("param");
+    const db = c.env.DB;
+    const period = await findPeriod(db, periodId);
+    await assertDeletable(db, "?1", periodId, "periodo");
+    await db.batch([
+      db.prepare("DELETE FROM dues WHERE kind = 'periodo' AND course_period_id = ?1").bind(periodId),
+      db.prepare("DELETE FROM course_periods WHERE id = ?1").bind(periodId),
+      auditStatement(db, c.get("user").id, "delete", "course_period", periodId, { period: `${period.course_name} ${period.name}` }),
+    ]);
+    return c.body(null, 204);
   })
   .openapi(enrollmentsRoute, async (c) => {
     const { periodId } = c.req.valid("param");

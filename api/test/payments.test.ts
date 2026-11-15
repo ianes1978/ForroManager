@@ -167,3 +167,53 @@ describe("descrizione dei pagamenti", () => {
     ).toBe("Quota associativa 2026 + Mensile gennaio 2026 + Maglietta");
   });
 });
+
+describe("correzione dei pagamenti", () => {
+  interface Full extends Payment { paidOn: string; note: string | null; memberId: number | null; updatedAt: string }
+  const put = (id: number, body: Record<string, unknown>, version?: string) =>
+    api(`/payments/${id}`, { method: "PUT", token, body: { method: "contanti", paidOn: `${YEAR}-03-10`, ...body }, headers: version ? { "If-Match": version } : {} });
+
+  it("corregge importo, metodo, data, nota e voci, e ripartisce di nuovo", async () => {
+    const id = await member();
+    const [jan, feb] = (await dues(id)).filter((d) => d.kind === "mensile");
+    const m = jan!.amountCents;
+    const p = (await (await pay({ memberId: id, amountCents: m, items: [{ dueId: jan!.id }] })).json()) as Full;
+    const res = await put(p.id, { amountCents: 2 * m, method: "bonifico", paidOn: `${YEAR}-03-12`, note: "Corretto", items: [{ dueId: jan!.id }, { dueId: feb!.id }] }, p.updatedAt);
+    expect(res.status).toBe(200);
+    const fixed = (await res.json()) as Full;
+    expect(fixed).toMatchObject({ id: p.id, amountCents: 2 * m, method: { code: "bonifico" }, paidOn: `${YEAR}-03-12`, note: "Corretto" });
+    expect(fixed.allocations.map((a) => a.amountCents)).toEqual([m, m]);
+    expect((await dues(id)).filter((d) => d.kind === "mensile").map((d) => d.paidCents)).toEqual([m, m]);
+
+    // Meno soldi: copre prima la voce più vecchia; la versione vecchia viene rifiutata.
+    expect(await errorCode(await put(p.id, { amountCents: 1000, items: [{ dueId: feb!.id }] }, p.updatedAt))).toBe("stale");
+    const less = (await (await put(p.id, { amountCents: m + 500 }, fixed.updatedAt)).json()) as Full;
+    expect(less.allocations.map((a) => a.amountCents)).toEqual([m, 500]);
+    expect(await errorCode(await put(p.id, { amountCents: 99999 }))).toBe("amount_exceeds");
+
+    const audit = await env.DB.prepare("SELECT details FROM audit_log WHERE entity = 'payment' AND entity_id = ?1 AND action = 'update' ORDER BY id").bind(p.id).all<{ details: string }>();
+    expect(JSON.parse(audit.results[0]!.details).before).toMatchObject({ amountCents: m, method: "contanti" });
+  });
+
+  it("sposta un pagamento sul socio giusto e libera le quote dell'altro", async () => {
+    const wrong = await member({ firstName: "Sbagliato" });
+    const right = await member({ firstName: "Giusto" });
+    const wrongJan = (await dues(wrong)).find((d) => d.month === 1)!;
+    const rightJan = (await dues(right)).find((d) => d.month === 1)!;
+    const m = wrongJan.amountCents;
+    const p = (await (await pay({ memberId: wrong, amountCents: m, items: [{ dueId: wrongJan.id }] })).json()) as Full;
+    expect(await errorCode(await put(p.id, { memberId: right, amountCents: m }))).toBe("validation_error");
+    const moved = (await (await put(p.id, { memberId: right, amountCents: rightJan.amountCents, items: [{ dueId: rightJan.id }] })).json()) as Full;
+    expect(moved.memberId).toBe(right);
+    expect((await dues(wrong)).find((d) => d.month === 1)!.paidCents).toBe(0);
+    expect((await dues(right)).find((d) => d.month === 1)!.paidCents).toBe(rightJan.amountCents);
+  });
+
+  it("non modifica un pagamento annullato", async () => {
+    const id = await member();
+    const jan = (await dues(id)).find((d) => d.month === 1)!;
+    const p = (await (await pay({ memberId: id, amountCents: jan.amountCents, items: [{ dueId: jan.id }] })).json()) as Full;
+    await api(`/payments/${p.id}/void`, { token, body: { reason: "Doppio" } });
+    expect(await errorCode(await put(p.id, { amountCents: jan.amountCents }))).toBe("already_voided");
+  });
+});

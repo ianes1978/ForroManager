@@ -21,8 +21,8 @@ export async function createUser(
   return { id: row!.id, email, password: opts.password ?? DEFAULT_PASSWORD };
 }
 
-export function api(path: string, init: { method?: string; token?: string; body?: unknown } = {}) {
-  const headers: Record<string, string> = {};
+export function api(path: string, init: { method?: string; token?: string; body?: unknown; headers?: Record<string, string> } = {}) {
+  const headers: Record<string, string> = { ...init.headers };
   if (init.token) headers.Authorization = `Bearer ${init.token}`;
   if (init.body !== undefined) headers["Content-Type"] = "application/json";
   return exports.default.fetch(`${BASE}${path}`, {

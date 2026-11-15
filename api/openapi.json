@@ -984,6 +984,10 @@
           "description": {
             "type": "string",
             "example": "Mensili ottobre–dicembre 2026"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "Versione da rimandare in If-Match per modificarlo"
           }
         },
         "required": [
@@ -1000,7 +1004,8 @@
           "voidedAt",
           "voidReason",
           "allocations",
-          "description"
+          "description",
+          "updatedAt"
         ]
       },
       "PaymentMethod": {
@@ -5138,6 +5143,84 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Corsi"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "summary": "Elimina un corso senza iscritti né pagamenti (altrimenti si può solo disattivare)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "example": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Corso eliminato"
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/courses/{id}/periods": {
@@ -5347,6 +5430,83 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Corsi"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "summary": "Elimina un periodo senza iscritti né pagamenti (altrimenti si può solo disattivare)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "periodId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Periodo eliminato"
           },
           "401": {
             "description": "Non autenticato o sessione scaduta",
@@ -5977,6 +6137,187 @@
           },
           "404": {
             "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Pagamenti"
+        ],
+        "summary": "Corregge un pagamento: data, metodo, nota, importo, socio e voci pagate",
+        "description": "Le voci vengono ripartite di nuovo come in un nuovo pagamento. Il registro delle modifiche conserva i dati precedenti.",
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "example": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Il valore updatedAt letto (o \"none\" se il dato non esisteva). Se nel frattempo è cambiato la risposta è 409 \"stale\".",
+              "example": "2026-11-15T10:42:00Z"
+            },
+            "required": false,
+            "description": "Il valore updatedAt letto (o \"none\" se il dato non esisteva). Se nel frattempo è cambiato la risposta è 409 \"stale\".",
+            "name": "if-match",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "memberId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "description": "Per spostare il pagamento su un altro socio (servono anche le voci)"
+                  },
+                  "paidOn": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "2026-11-15"
+                  },
+                  "amountCents": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 10000000
+                  },
+                  "method": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 30
+                  },
+                  "note": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 500
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "dueId": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0
+                            }
+                          },
+                          "required": [
+                            "dueId"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "year": {
+                              "type": "integer",
+                              "minimum": 2000,
+                              "maximum": 2100
+                            },
+                            "month": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 12
+                            }
+                          },
+                          "required": [
+                            "year",
+                            "month"
+                          ]
+                        }
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 12,
+                    "description": "Nuove voci coperte; se omesse restano quelle attuali"
+                  }
+                },
+                "required": [
+                  "paidOn",
+                  "amountCents",
+                  "method"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pagamento corretto",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Payment"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
             "content": {
               "application/json": {
                 "schema": {

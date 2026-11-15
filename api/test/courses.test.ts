@@ -17,7 +17,7 @@ async function course(name: string): Promise<Course> {
 }
 async function period(courseId: number, from: string, to: string, amountCents: number): Promise<Period> {
   const res = await api(`/courses/${courseId}/periods`, { token, body: { from, to, amountCents } });
-  expect(res.status).toBe(201);
+  if (res.status !== 201) throw new Error(await res.text());
   return (await res.json()) as Period;
 }
 async function dues(memberId: number, year = Y): Promise<{ items: Due[]; summary: { arrearsCents: number; inRegola: boolean } }> {
@@ -121,5 +121,36 @@ describe("corsi e periodi", () => {
   it("gli incassi dei periodi compaiono nel report per voce", async () => {
     const r = (await (await api(`/reports/income?year=${Y}`, { token })).json()) as { byKind: Record<string, number> };
     expect(r.byKind.periodo).toBeGreaterThanOrEqual(6000);
+  });
+});
+
+describe("eliminazione di corsi e periodi", () => {
+  it("elimina un corso senza iscritti, anche con iscrizioni annullate e mai pagate", async () => {
+    const c = await course("Corso creato per sbaglio");
+    const p = await period(c.id, `${Y}-04`, `${Y}-06`, 3000);
+    const m = await member("Elena");
+    await api(`/course-periods/${p.id}/enroll`, { token, body: { memberIds: [m] } });
+    const due = (await dues(m)).items.find((x) => x.coursePeriodId === p.id)!;
+    expect(await errorCode(await api(`/courses/${c.id}`, { token, method: "DELETE" }))).toBe("course_in_use");
+    expect((await api(`/dues/${due.id}/cancel`, { token, body: { reason: "Sbaglio" } })).status).toBe(204);
+    expect((await api(`/courses/${c.id}`, { token, method: "DELETE" })).status).toBe(204);
+    const list = (await (await api("/courses", { token })).json()) as { items: Course[] };
+    expect(list.items.some((x) => x.id === c.id)).toBe(false);
+    expect((await api(`/courses/${c.id}`, { token, method: "DELETE" })).status).toBe(404);
+  });
+
+  it("non elimina un periodo con pagamenti, nemmeno se annullati", async () => {
+    const c = await course("Corso con pagamenti");
+    const p = await period(c.id, `${Y}-01`, `${Y}-02`, 2000);
+    const vuoto = await period(c.id, `${Y}-03`, `${Y}-04`, 2000);
+    const m = await member("Franco");
+    await api(`/course-periods/${p.id}/enroll`, { token, body: { memberIds: [m] } });
+    const due = (await dues(m)).items.find((x) => x.coursePeriodId === p.id)!;
+    const pay = (await (await api("/payments", { token, body: { memberId: m, amountCents: 2000, method: "contanti", items: [{ dueId: due.id }] } })).json()) as { id: number };
+    await api(`/payments/${pay.id}/void`, { token, body: { reason: "Prova" } });
+    await api(`/dues/${due.id}/cancel`, { token, body: { reason: "Ritirato" } });
+    expect(await errorCode(await api(`/course-periods/${p.id}`, { token, method: "DELETE" }))).toBe("period_in_use");
+    expect(await errorCode(await api(`/courses/${c.id}`, { token, method: "DELETE" }))).toBe("course_in_use");
+    expect((await api(`/course-periods/${vuoto.id}`, { token, method: "DELETE" })).status).toBe(204);
   });
 });
