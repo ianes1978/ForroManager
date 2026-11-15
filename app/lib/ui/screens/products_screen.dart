@@ -303,7 +303,7 @@ class ProductDetailScreen extends ConsumerWidget {
         builder: (p) => ListView(padding: const EdgeInsets.only(bottom: 32), children: [
           ListTile(
             title: Text('${p.typeLabel} · ${euro(p.priceCents)}'),
-            subtitle: Text(p.active ? (p.tracksStock ? 'Scorte gestite · avviso sotto ${p.lowStockThreshold + 1} pezzi' : 'Senza scorte di magazzino') : 'Non disponibile per la vendita'),
+            subtitle: Text(p.active ? (p.tracksStock ? 'Scorte gestite · avviso con ${p.lowStockThreshold} pezzi o meno' : 'Senza scorte di magazzino') : 'Non disponibile per la vendita'),
           ),
           if (p.tracksStock) ...[
             SectionTitle('Magazzino · ${p.totalStock} pezzi'),

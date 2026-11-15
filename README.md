@@ -1,7 +1,8 @@
 # ForroManager
 
 Registro dei pagamenti dell'associazione: soci, quote associative (anno solare)
-e mensili, prodotti ed eventi, moduli firmati, incassi e riepiloghi. È usato in
+e mensili, prodotti ed eventi (anche venduti a non soci), magazzino con taglie e
+colori, moduli firmati, incassi e riepiloghi. È usato in
 condivisione dai membri del direttivo (un solo ruolo: tutti possono tutto).
 
 | Cartella | Contenuto |
@@ -86,6 +87,13 @@ La specifica è generata dalle stesse definizioni usate per validare le richiest
   rinnovata con l'uso; revocabili. Blocco di 15 minuti dopo 5 errori di login.
 - **Pagamenti** mai cancellati: si annullano con un motivo. Ogni modifica
   finisce nel registro (`audit_log`).
+- **Magazzino**: le scorte sono la somma dei movimenti (carichi, vendite, resi,
+  rettifiche), per variante di prodotto. Una vendita scala la scorta, l'annullamento
+  la rimette. Si può vendere oltre la scorta: l'app avvisa e la scorta va in negativo.
+- **Vendite a non soci**: se pagate subito non si registra alcun dato
+  dell'acquirente; se pagate più tardi solo il nome, cancellato quando la vendita
+  è saldata. Annullare il pagamento di una vendita a non socio annulla anche la
+  vendita.
 - **Privacy**: database con giurisdizione UE, nessun dato personale nei log,
   CSV con `Cache-Control: no-store`.
 - **Limiti del piano gratuito**: le operazioni su molti soci (generazione
