@@ -6,6 +6,7 @@ import { authRoutes } from "./routes/auth.ts";
 import { dueRoutes } from "./routes/dues.ts";
 import { feeRoutes } from "./routes/fees.ts";
 import { memberRoutes } from "./routes/members.ts";
+import { paymentRoutes } from "./routes/payments.ts";
 import { productRoutes } from "./routes/products.ts";
 import { userRoutes } from "./routes/users.ts";
 
@@ -33,6 +34,7 @@ app.route("/", feeRoutes);
 app.route("/", memberRoutes);
 app.route("/", productRoutes);
 app.route("/", dueRoutes);
+app.route("/", paymentRoutes);
 
 app.doc31("/openapi.json", {
   openapi: "3.1.0",
