@@ -69,6 +69,22 @@ npm run db:migrate:local
 In produzione vengono applicate dal workflow di deploy
 (`wrangler d1 migrations apply forromanager-db --remote`).
 
+### Livello dell'API e avviso di aggiornamento
+
+`api/src/api-level.ts` contiene il livello dell'API: `npm run openapi` lo aumenta
+da solo ogni volta che `openapi.json` cambia. Lo stesso numero va messo in
+`app/lib/config/api_level.dart` (`kApiLevel`): un test dell'API e uno dell'app
+falliscono se non sono allineati.
+
+Il server indica il suo livello su ogni risposta (header `X-Api-Level`) e su
+`GET /api/v1/version`, insieme alla pagina da cui scaricare l'APK
+(`APP_DOWNLOAD_URL` in `wrangler.jsonc`). L'app confronta i due numeri e mostra un
+avviso in alto:
+
+- **app più vecchia del server**: "scarica e installa la versione nuova", con il
+  pulsante Scarica;
+- **server più vecchio dell'app** (o senza `/version`): "avvia il deploy".
+
 ### Specifica OpenAPI
 
 La specifica è generata dalle stesse definizioni usate per validare le richieste:
@@ -114,6 +130,8 @@ La specifica è generata dalle stesse definizioni usate per validare le richiest
   conta per gli arretrati dal mese di inizio. Un socio può seguire più corsi.
 - **Report Excel**: l'API fornisce i dati (`/reports/full`), il file `.xlsx` è
   generato dall'app (pacchetto `excel`), così il Worker resta nei limiti di CPU.
+  Riepilogo e totali sono formule che leggono i fogli dei dati (Pagamenti, Spese,
+  Quote, Vendite, Soci); il file chiede il ricalcolo all'apertura.
 - **Più utenti insieme**: i dati stanno solo nel database e ogni salvataggio è
   una transazione. Incassi e vendite accettano l'header `Idempotency-Key`: se la
   rete cade dopo il salvataggio e si riprova, l'operazione non viene registrata

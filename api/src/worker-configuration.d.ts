@@ -5,6 +5,7 @@ interface __BaseEnv_Env {
 	DB: D1Database;
 	ASSETS: Fetcher;
 	DEV_CORS_ORIGIN: "";
+	APP_DOWNLOAD_URL: string;
 	PASSWORD_PEPPER: string;
 }
 declare namespace Cloudflare {
@@ -15,7 +16,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "DEV_CORS_ORIGIN" | "PASSWORD_PEPPER">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "DEV_CORS_ORIGIN" | "PASSWORD_PEPPER" | "APP_DOWNLOAD_URL">> {}
 }
 declare module "*.txt" {
 	const value: string;

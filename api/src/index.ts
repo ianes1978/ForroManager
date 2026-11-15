@@ -1,5 +1,6 @@
 import { HTTPException } from "hono/http-exception";
 import { cors } from "hono/cors";
+import { API_LEVEL } from "./api-level.ts";
 import { ApiError } from "./lib/errors.ts";
 import { createRouter } from "./lib/http.ts";
 import { auditRoutes } from "./routes/audit.ts";
@@ -26,8 +27,28 @@ const app = createRouter().basePath("/api/v1");
 app.use("*", async (c, next) => {
   const origin = c.env.DEV_CORS_ORIGIN;
   if (!origin) return next();
-  return cors({ origin, allowHeaders: ["Authorization", "Content-Type"], maxAge: 600 })(c, next);
+  return cors({
+    origin,
+    allowHeaders: ["Authorization", "Content-Type", "Idempotency-Key", "If-Match"],
+    exposeHeaders: ["X-Api-Level"],
+    maxAge: 600,
+  })(c, next);
 });
+
+// Livello dell'API su ogni risposta: l'app lo confronta con il proprio e avvisa
+// se va aggiornata (APK vecchio) o se il server non è ancora stato aggiornato.
+app.use("*", async (c, next) => {
+  await next();
+  try {
+    c.res.headers.set("X-Api-Level", String(API_LEVEL));
+  } catch {
+    // Risposte con header non modificabili: l'informazione resta su /version.
+  }
+});
+
+app.get("/version", (c) =>
+  c.json({ apiLevel: API_LEVEL, appDownloadUrl: c.env.APP_DOWNLOAD_URL || "https://github.com/ianes1978/ForroManager/releases" }),
+);
 
 app.openAPIRegistry.registerComponent("securitySchemes", "Bearer", { type: "http", scheme: "bearer" });
 

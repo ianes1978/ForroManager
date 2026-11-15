@@ -796,3 +796,11 @@ class ExpenseCategory {
   final String name;
   final bool active;
 }
+
+/// Livello dell'API del server e pagina da cui scaricare l'app aggiornata.
+class VersionInfo {
+  VersionInfo({required this.apiLevel, this.appDownloadUrl});
+  factory VersionInfo.fromJson(Json j) => VersionInfo(apiLevel: j['apiLevel'] as int, appDownloadUrl: j['appDownloadUrl'] as String?);
+  final int apiLevel;
+  final String? appDownloadUrl;
+}

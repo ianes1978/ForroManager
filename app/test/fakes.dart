@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forromanager/app.dart';
+import 'package:forromanager/config/api_level.dart';
 import 'package:forromanager/core/api_client.dart';
 import 'package:forromanager/core/errors.dart';
 import 'package:forromanager/core/session_store.dart';
@@ -58,6 +59,12 @@ class FakeRepository extends Repository {
   final paymentKeys = <String?>[];
   final saleKeys = <String?>[];
   bool failNextPaymentWithNetwork = false;
+
+  /// Risposta di /version: di default allineata all'app.
+  VersionInfo versionInfo = VersionInfo(apiLevel: kApiLevel, appDownloadUrl: 'https://example.invalid/apk');
+
+  @override
+  Future<VersionInfo> version() async => versionInfo;
 
   Json? lastExpense;
   final expenseKeys = <String?>[];

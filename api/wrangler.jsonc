@@ -30,6 +30,9 @@
   "vars": {
     // Origine consentita per CORS in sviluppo (server di sviluppo Flutter web).
     // In produzione app e API hanno la stessa origine e CORS non serve.
-    "DEV_CORS_ORIGIN": ""
+    "DEV_CORS_ORIGIN": "",
+    // Pagina da cui scaricare l'APK aggiornato, mostrata dall'app quando è più
+    // vecchia del server.
+    "APP_DOWNLOAD_URL": "https://github.com/ianes1978/ForroManager/releases"
   }
 }

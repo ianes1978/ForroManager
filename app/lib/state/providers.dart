@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/misc.dart' show ProviderOrFamily;
 
 import '../config/env.dart';
 import '../core/api_client.dart';
+import '../core/errors.dart';
 import '../core/operation_keys.dart';
 import '../core/session_store.dart';
 import '../data/models.dart';
@@ -11,9 +12,38 @@ import '../data/repository.dart';
 // Infrastruttura ---------------------------------------------------------------
 final sessionStoreProvider = Provider<SessionStore>((ref) => createSessionStore());
 
-final apiClientProvider = Provider<ApiClient>(
-  (ref) => ApiClient(baseUrl: Env.apiBase, store: ref.watch(sessionStoreProvider)),
-);
+final apiClientProvider = Provider<ApiClient>((ref) {
+  final client = ApiClient(baseUrl: Env.apiBase, store: ref.watch(sessionStoreProvider));
+  client.onApiLevel = (level) => ref.read(serverApiLevelProvider.notifier).seen(level);
+  return client;
+});
+
+/// Livello dell'API del server, letto dalle risposte (null finché non è noto).
+class ServerApiLevel extends Notifier<int?> {
+  @override
+  int? build() => null;
+  void seen(int level) {
+    if (state != level) state = level;
+  }
+}
+
+final serverApiLevelProvider = NotifierProvider<ServerApiLevel, int?>(ServerApiLevel.new);
+
+/// Livello del server e pagina di download dell'app (/version, senza accesso).
+/// Un server senza /version è precedente a questo meccanismo: livello 0.
+final versionInfoProvider = FutureProvider<VersionInfo>((ref) async {
+  try {
+    final v = await ref.read(repositoryProvider).version();
+    ref.read(serverApiLevelProvider.notifier).seen(v.apiLevel);
+    return v;
+  } on ApiException catch (e) {
+    if (e.status == 404) {
+      ref.read(serverApiLevelProvider.notifier).seen(0);
+      return VersionInfo(apiLevel: 0);
+    }
+    rethrow;
+  }
+});
 
 /// Chiavi anti-doppione delle operazioni in corso (solo in memoria).
 final operationKeysProvider = Provider<OperationKeys>((ref) => OperationKeys());

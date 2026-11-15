@@ -15,6 +15,7 @@ class Repository {
     return (res['token'] as String, SessionUser.fromJson(res['user'] as Json));
   }
 
+  Future<VersionInfo> version() async => VersionInfo.fromJson(await api.get('/version') as Json);
   Future<SessionUser> me() async => SessionUser.fromJson(await api.get('/auth/me') as Json);
   Future<void> logout() => api.post('/auth/logout');
   Future<void> changePassword(String current, String next) =>

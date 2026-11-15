@@ -19,6 +19,9 @@ class ApiClient {
   /// Chiamato quando il server risponde 401: la sessione non è più valida.
   void Function()? onSessionExpired;
 
+  /// Chiamato con il livello dell'API indicato dal server (header X-Api-Level).
+  void Function(int level)? onApiLevel;
+
   static const _timeout = Duration(seconds: 20);
 
   Uri _uri(String path, [Map<String, Object?>? query]) {
@@ -71,6 +74,8 @@ class ApiClient {
     http.Response res;
     try {
       res = await http.Response.fromStream(await _http.send(request).timeout(_timeout));
+      final level = int.tryParse(res.headers['x-api-level'] ?? '');
+      if (level != null) onApiLevel?.call(level);
     } on TimeoutException {
       throw const NetworkException();
     } on http.ClientException {
