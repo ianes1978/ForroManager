@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 /// Tema Material 3 con aree di tocco ampie, pensato per l'uso con una mano.
 ThemeData buildTheme(Brightness brightness) {
-  final scheme = ColorScheme.fromSeed(seedColor: const Color(0xFF1F6B4F), brightness: brightness);
+  final scheme = ColorScheme.fromSeed(seedColor: const Color(0xFF12705A), brightness: brightness);
   const tall = Size.fromHeight(52);
   return ThemeData(
     colorScheme: scheme,
