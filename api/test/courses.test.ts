@@ -154,3 +154,19 @@ describe("eliminazione di corsi e periodi", () => {
     expect((await api(`/course-periods/${vuoto.id}`, { token, method: "DELETE" })).status).toBe(204);
   });
 });
+
+describe("correzione dei mesi di un periodo", () => {
+  it("sposta il periodo e le iscrizioni seguono il nuovo mese di inizio; il nome automatico si aggiorna", async () => {
+    const c = await course("Corso da spostare");
+    const p = await period(c.id, `${Y}-02`, `${Y}-04`, 4000);
+    const m = await member("Gino");
+    await api(`/course-periods/${p.id}/enroll`, { token, body: { memberIds: [m] } });
+    const res = await api(`/course-periods/${p.id}`, { token, method: "PATCH", body: { from: `${Y}-03`, to: `${Y}-06` } });
+    expect(res.status).toBe(200);
+    const moved = ((await res.json()) as { period: Period }).period;
+    expect(moved).toMatchObject({ from: `${Y}-03`, to: `${Y}-06`, months: 4, name: `mar–giu ${Y}` });
+    const due = (await dues(m)).items.find((x) => x.coursePeriodId === p.id)! as Due & { month: number };
+    expect(due.month).toBe(3);
+    expect(await errorCode(await api(`/course-periods/${p.id}`, { token, method: "PATCH", body: { from: `${Y}-07`, to: `${Y}-06` } }))).toBe("validation_error");
+  });
+});

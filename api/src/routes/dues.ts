@@ -2,6 +2,7 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { DueSchema, findDue, memberDues, toDue } from "../data/dues.ts";
 import { summarize } from "../domain/dues.ts";
 import { formatYearMonth, periodOf } from "../domain/periods.ts";
+import { assertDeletable } from "../data/usage.ts";
 import { auditStatement } from "../lib/audit.ts";
 import { conflict, invalid, notFound } from "../lib/errors.ts";
 import { DateSchema, IdParam, YearSchema, bearer, commonErrors, createRouter, errors, IdempotencyHeaders, json } from "../lib/http.ts";
@@ -265,9 +266,7 @@ dueRoutes
       .bind(id)
       .first<{ id: number; member_id: number | null; kind: string; year: number; month: number | null; amount_cents: number; cancelled_at: string | null }>();
     if (!due) throw notFound("Quota non trovata.");
-    if (await db.prepare("SELECT 1 FROM payment_allocations WHERE due_id = ?1 LIMIT 1").bind(id).first()) {
-      throw conflict("has_payments", "La quota ha ricevuto dei pagamenti (anche annullati): non si può eliminare, ma puoi annullarla indicando il motivo.");
-    }
+    await assertDeletable(db, "due", id, "has_payments");
     // I movimenti di magazzino della vendita spariscono con lei: la scorta torna com'era.
     await db.batch([
       db.prepare("DELETE FROM stock_movements WHERE due_id = ?1").bind(id),

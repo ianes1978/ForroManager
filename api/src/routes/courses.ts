@@ -1,6 +1,7 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { defaultPeriodName } from "../domain/dues.ts";
 import { formatYearMonth, monthOf, parseYearMonth, yearOf } from "../domain/periods.ts";
+import { assertDeletable } from "../data/usage.ts";
 import { auditStatement } from "../lib/audit.ts";
 import { assertNotModified } from "../lib/concurrency.ts";
 import { conflict, invalid, notFound } from "../lib/errors.ts";
@@ -142,8 +143,8 @@ const createPeriodRoute = createRoute({
 
 const updatePeriodRoute = createRoute({
   method: "patch", path: "/course-periods/{periodId}", tags: ["Corsi"], security: bearer,
-  summary: "Modifica nome, prezzo o stato di un periodo",
-  description: "Con applyToUnpaid il nuovo prezzo vale anche per le iscrizioni senza pagamenti né riduzioni personali.",
+  summary: "Modifica nome, mesi, prezzo o stato di un periodo",
+  description: "Con applyToUnpaid il nuovo prezzo vale anche per le iscrizioni senza pagamenti né riduzioni personali. Cambiando i mesi, le iscrizioni seguono il nuovo mese di inizio.",
   request: {
     headers: IfMatchHeaders,
     params: PeriodIdParam,
@@ -151,11 +152,16 @@ const updatePeriodRoute = createRoute({
       z
         .object({
           name: z.string().trim().min(1).max(40).optional(),
+          from: YearMonthSchema.optional(),
+          to: YearMonthSchema.optional(),
           amountCents: z.number().int().min(0).max(10_000_000).optional(),
           active: z.boolean().optional(),
           applyToUnpaid: z.boolean().default(false),
         })
-        .refine((v) => v.name !== undefined || v.amountCents !== undefined || v.active !== undefined, "Nessuna modifica indicata."),
+        .refine(
+          (v) => v.name !== undefined || v.amountCents !== undefined || v.active !== undefined || v.from !== undefined || v.to !== undefined,
+          "Nessuna modifica indicata.",
+        ),
     ),
   },
   responses: { 200: { description: "Periodo aggiornato", ...json(z.object({ period: PeriodSchema, updatedDues: z.number().int() })) }, ...commonErrors, 404: errors[404], 409: errors[409] },
@@ -195,24 +201,6 @@ const deletePeriodRoute = createRoute({
   request: { params: PeriodIdParam },
   responses: { 204: { description: "Periodo eliminato" }, ...commonErrors, 404: errors[404], 409: errors[409] },
 });
-
-/**
- * Un periodo è "in uso" se ha iscrizioni attive o se una sua quota, anche annullata,
- * ha ricevuto pagamenti (anche annullati): lo storico dei pagamenti deve restare
- * leggibile. Le iscrizioni annullate e mai pagate vengono eliminate con il periodo.
- */
-const PERIODS_IN_USE = (where: string) => `
-  SELECT
-    (SELECT COUNT(*) FROM dues d WHERE d.kind = 'periodo' AND d.cancelled_at IS NULL AND d.course_period_id IN (${where})) AS enrolled,
-    (SELECT COUNT(*) FROM payment_allocations a JOIN dues d ON d.id = a.due_id WHERE d.kind = 'periodo' AND d.course_period_id IN (${where})) AS payments`;
-
-async function assertDeletable(db: D1Database, where: string, id: number, what: "corso" | "periodo") {
-  const use = await db.prepare(PERIODS_IN_USE(where)).bind(id).first<{ enrolled: number; payments: number }>();
-  if ((use?.enrolled ?? 0) > 0 || (use?.payments ?? 0) > 0) {
-    const reason = (use?.enrolled ?? 0) > 0 ? `ha ${use!.enrolled} ${use!.enrolled === 1 ? "iscritto" : "iscritti"}` : "ha dei pagamenti registrati";
-    throw conflict(`${what === "corso" ? "course" : "period"}_in_use`, `Il ${what} ${reason}: non si può eliminare, ma puoi disattivarlo per nasconderlo.`);
-  }
-}
 
 export const courseRoutes = createRouter();
 for (const path of ["/courses", "/courses/*", "/course-periods/*"]) courseRoutes.use(path, requireAuth);
@@ -289,11 +277,29 @@ courseRoutes
     const db = c.env.DB;
     const before = await findPeriod(db, periodId);
     await assertNotModified(c, before.updated_at, { entity: "course_period", entityId: periodId });
+    const from = b.from ? parseYearMonth(b.from) : before.from_period;
+    const to = b.to ? parseYearMonth(b.to) : before.to_period;
+    const datesChanged = from !== before.from_period || to !== before.to_period;
+    if (datesChanged) {
+      if (to < from) throw invalid("Il mese finale precede quello iniziale.", [{ field: "to", message: "Deve essere uguale o successivo al mese iniziale." }]);
+      if (to - from > 23) throw invalid("Un periodo può durare al massimo 24 mesi.", [{ field: "to", message: "Periodo troppo lungo." }]);
+      if (await db.prepare("SELECT 1 FROM course_periods WHERE course_id = ?1 AND from_period = ?2 AND to_period = ?3 AND id <> ?4").bind(before.course_id, from, to, periodId).first()) {
+        throw conflict("period_exists", "Questo periodo esiste già per il corso.");
+      }
+    }
+    // Se il nome era quello automatico ("gen–mar 2026") e cambiano i mesi, si aggiorna anche lui.
+    const autoName = defaultPeriodName(yearOf(before.from_period), monthOf(before.from_period), yearOf(before.to_period), monthOf(before.to_period));
+    const name = b.name ?? (datesChanged && before.name === autoName ? defaultPeriodName(yearOf(from), monthOf(from), yearOf(to), monthOf(to)) : null);
     const statements: D1PreparedStatement[] = [
-      db.prepare("UPDATE course_periods SET name = COALESCE(?1, name), amount_cents = COALESCE(?2, amount_cents), active = COALESCE(?3, active), updated_at = ?4 WHERE id = ?5")
-        .bind(b.name ?? null, b.amountCents ?? null, b.active === undefined ? null : Number(b.active), nowIso(), periodId),
+      db.prepare(
+        "UPDATE course_periods SET name = COALESCE(?1, name), amount_cents = COALESCE(?2, amount_cents), active = COALESCE(?3, active), from_period = ?4, to_period = ?5, updated_at = ?6 WHERE id = ?7",
+      ).bind(name, b.amountCents ?? null, b.active === undefined ? null : Number(b.active), from, to, nowIso(), periodId),
     ];
+    if (datesChanged) {
+      statements.push(db.prepare("UPDATE dues SET year = ?1, month = ?2 WHERE course_period_id = ?3 AND kind = 'periodo'").bind(yearOf(from), monthOf(from), periodId));
+    }
     const reprice = b.applyToUnpaid && b.amountCents !== undefined;
+    const repriceIndex = statements.length;
     if (reprice) {
       statements.push(
         db.prepare(
@@ -305,19 +311,19 @@ courseRoutes
     }
     statements.push(
       auditStatement(db, c.get("user").id, "update", "course_period", periodId, {
-        before: { name: before.name, amountCents: before.amount_cents, active: before.active === 1 },
+        before: { name: before.name, from: formatYearMonth(before.from_period), to: formatYearMonth(before.to_period), amountCents: before.amount_cents, active: before.active === 1 },
         changes: b,
       }),
     );
     const results = await db.batch(statements);
-    return c.json({ period: toPeriod(await findPeriod(db, periodId)), updatedDues: reprice ? (results[1]?.meta.changes ?? 0) : 0 }, 200);
+    return c.json({ period: toPeriod(await findPeriod(db, periodId)), updatedDues: reprice ? (results[repriceIndex]?.meta.changes ?? 0) : 0 }, 200);
   })
   .openapi(deleteCourseRoute, async (c) => {
     const { id } = c.req.valid("param");
     const db = c.env.DB;
     const course = await findCourse(db, id);
     const periods = "SELECT id FROM course_periods WHERE course_id = ?1";
-    await assertDeletable(db, periods, id, "corso");
+    await assertDeletable(db, "course", id, "course_in_use");
     await db.batch([
       db.prepare(`DELETE FROM dues WHERE kind = 'periodo' AND course_period_id IN (${periods})`).bind(id),
       db.prepare("DELETE FROM course_periods WHERE course_id = ?1").bind(id),
@@ -330,7 +336,7 @@ courseRoutes
     const { periodId } = c.req.valid("param");
     const db = c.env.DB;
     const period = await findPeriod(db, periodId);
-    await assertDeletable(db, "?1", periodId, "periodo");
+    await assertDeletable(db, "course-period", periodId, "period_in_use");
     await db.batch([
       db.prepare("DELETE FROM dues WHERE kind = 'periodo' AND course_period_id = ?1").bind(periodId),
       db.prepare("DELETE FROM course_periods WHERE id = ?1").bind(periodId),

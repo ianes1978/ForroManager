@@ -213,3 +213,22 @@ describe("tracciabilità del magazzino", () => {
     expect(text).toContain("Data;Prodotto;Taglia;Colore;Movimento;Quantità;Scorta dopo;A chi;Vendita n.;Nota;Registrato da");
   });
 });
+
+describe("correzioni di magazzino", () => {
+  it("corregge taglia e colore ed elimina un carico sbagliato, non una vendita", async () => {
+    const p = await tshirt();
+    const [m, l] = p.variants;
+    expect(await errorCode(await api(`/variants/${m!.id}`, { token, method: "PATCH", body: { size: "L", color: "nero" } }))).toBe("variant_exists");
+    const fixed = (await (await api(`/variants/${m!.id}`, { token, method: "PATCH", body: { color: "bianco" } })).json()) as Product;
+    expect(fixed.variants.find((v) => v.id === m!.id)).toMatchObject({ size: "M", color: "bianco" });
+
+    await stock(l!.id, "carico", 50);
+    const id = await member();
+    await api(`/members/${id}/charges`, { token, body: { productId: p.id, variantId: l!.id } });
+    const moves = (await env.DB.prepare("SELECT id, kind FROM stock_movements WHERE variant_id = ?1 ORDER BY id").bind(l!.id).all<{ id: number; kind: string }>()).results;
+    expect(await stockOf(p.id, l!.id)).toBe(49);
+    expect(await errorCode(await api(`/stock-movements/${moves.find((x) => x.kind === "vendita")!.id}`, { token, method: "DELETE" }))).toBe("movement_from_sale");
+    expect((await api(`/stock-movements/${moves.find((x) => x.kind === "carico")!.id}`, { token, method: "DELETE" })).status).toBe(200);
+    expect(await stockOf(p.id, l!.id)).toBe(-1);
+  });
+});

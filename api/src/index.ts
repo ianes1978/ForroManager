@@ -14,6 +14,7 @@ import { paymentRoutes } from "./routes/payments.ts";
 import { productRoutes } from "./routes/products.ts";
 import { reportRoutes } from "./routes/reports.ts";
 import { saleRoutes } from "./routes/sales.ts";
+import { usageRoutes } from "./routes/usage.ts";
 import { userRoutes } from "./routes/users.ts";
 
 const API_VERSION = "1.0.0";
@@ -47,6 +48,7 @@ app.route("/", reportRoutes);
 app.route("/", formRoutes);
 app.route("/", exportRoutes);
 app.route("/", auditRoutes);
+app.route("/", usageRoutes);
 
 app.doc31("/openapi.json", {
   openapi: "3.1.0",

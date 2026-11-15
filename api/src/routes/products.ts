@@ -3,7 +3,7 @@ import { PRODUCT_COLUMNS, type ProductRow, STOCK_SQL, type VariantRow, findProdu
 import { variantLabel } from "../domain/dues.ts";
 import { auditStatement } from "../lib/audit.ts";
 import { assertNotModified } from "../lib/concurrency.ts";
-import { conflict, invalid } from "../lib/errors.ts";
+import { conflict, invalid, notFound } from "../lib/errors.ts";
 import { DateSchema, IdParam, bearer, commonErrors, createRouter, errors, IfMatchHeaders, json } from "../lib/http.ts";
 import { nowIso, todayIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
@@ -131,9 +131,23 @@ const addVariantRoute = createRoute({
 const VariantIdParam = z.object({ variantId: z.coerce.number().int().positive().openapi({ param: { name: "variantId", in: "path" } }) });
 
 const updateVariantRoute = createRoute({
-  method: "patch", path: "/variants/{variantId}", tags: ["Magazzino"], summary: "Disattiva o riattiva una variante", security: bearer,
-  request: { params: VariantIdParam, body: json(z.object({ active: z.boolean() })) },
-  responses: { 200: { description: "Prodotto aggiornato", ...json(ProductSchema) }, ...commonErrors, 404: errors[404] },
+  method: "patch", path: "/variants/{variantId}", tags: ["Magazzino"], summary: "Corregge taglia e colore, o disattiva/riattiva una variante", security: bearer,
+  request: {
+    params: VariantIdParam,
+    body: json(
+      z
+        .object({ active: z.boolean().optional(), size: z.string().trim().max(20).optional(), color: z.string().trim().max(30).optional() })
+        .refine((v) => Object.keys(v).length > 0, "Nessuna modifica indicata."),
+    ),
+  },
+  responses: { 200: { description: "Prodotto aggiornato", ...json(ProductSchema) }, ...commonErrors, 404: errors[404], 409: errors[409] },
+});
+
+const deleteMovementRoute = createRoute({
+  method: "delete", path: "/stock-movements/{movementId}", tags: ["Magazzino"], security: bearer,
+  summary: "Elimina un carico o una rettifica registrati per errore (le vendite si correggono dalla quota)",
+  request: { params: z.object({ movementId: z.coerce.number().int().positive().openapi({ param: { name: "movementId", in: "path" } }) }) },
+  responses: { 200: { description: "Prodotto aggiornato", ...json(ProductSchema) }, ...commonErrors, 404: errors[404], 409: errors[409] },
 });
 
 const stockRoute = createRoute({
@@ -193,7 +207,7 @@ const stockListRoute = createRoute({
 });
 
 export const productRoutes = createRouter();
-for (const path of ["/products", "/products/*", "/variants/*", "/stock"]) productRoutes.use(path, requireAuth);
+for (const path of ["/products", "/products/*", "/variants/*", "/stock", "/stock-movements/*"]) productRoutes.use(path, requireAuth);
 
 productRoutes
   .openapi(listRoute, async (c) => {
@@ -283,14 +297,42 @@ productRoutes
   })
   .openapi(updateVariantRoute, async (c) => {
     const { variantId } = c.req.valid("param");
-    const { active } = c.req.valid("json");
+    const b = c.req.valid("json");
     const db = c.env.DB;
     const v = await findVariant(db, variantId);
+    const before = await db.prepare("SELECT size, color, active FROM product_variants WHERE id = ?1").bind(variantId).first<{ size: string; color: string; active: number }>();
+    const size = b.size ?? before!.size;
+    const color = b.color ?? before!.color;
+    if (b.size !== undefined || b.color !== undefined) {
+      const exists = await db
+        .prepare("SELECT 1 FROM product_variants WHERE product_id = ?1 AND size = ?2 COLLATE NOCASE AND color = ?3 COLLATE NOCASE AND id <> ?4")
+        .bind(v.product_id, size, color, variantId)
+        .first();
+      if (exists) throw conflict("variant_exists", "Esiste già una variante con questa taglia e questo colore.");
+    }
     await db.batch([
-      db.prepare("UPDATE product_variants SET active = ?1 WHERE id = ?2").bind(Number(active), variantId),
-      auditStatement(db, c.get("user").id, "update", "variant", variantId, { active }),
+      db.prepare("UPDATE product_variants SET size = ?1, color = ?2, active = COALESCE(?3, active) WHERE id = ?4")
+        .bind(size, color, b.active === undefined ? null : Number(b.active), variantId),
+      auditStatement(db, c.get("user").id, "update", "variant", variantId, { before: { size: before!.size, color: before!.color, active: before!.active === 1 }, changes: b }),
     ]);
     return c.json(await productWithVariants(db, v.product_id), 200);
+  })
+  .openapi(deleteMovementRoute, async (c) => {
+    const { movementId } = c.req.valid("param");
+    const db = c.env.DB;
+    const m = await db
+      .prepare("SELECT s.kind, s.quantity, s.variant_id, v.product_id FROM stock_movements s JOIN product_variants v ON v.id = s.variant_id WHERE s.id = ?1")
+      .bind(movementId)
+      .first<{ kind: string; quantity: number; variant_id: number; product_id: number }>();
+    if (!m) throw notFound("Movimento non trovato.");
+    if (m.kind !== "carico" && m.kind !== "rettifica") {
+      throw conflict("movement_from_sale", "Questo movimento viene da una vendita: per correggerlo elimina o annulla la vendita dalla scheda del socio o dalle vendite.");
+    }
+    await db.batch([
+      db.prepare("DELETE FROM stock_movements WHERE id = ?1").bind(movementId),
+      auditStatement(db, c.get("user").id, "delete", "stock_movement", movementId, { variantId: m.variant_id, kind: m.kind, quantity: m.quantity }),
+    ]);
+    return c.json(await productWithVariants(db, m.product_id), 200);
   })
   .openapi(stockRoute, async (c) => {
     const { variantId } = c.req.valid("param");
