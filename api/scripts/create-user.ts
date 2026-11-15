@@ -6,6 +6,7 @@
  *   npx wrangler d1 execute forromanager-db --local --file .user.sql
  *   rm .user.sql
  *
+ * Con --password si sceglie la password temporanea (altrimenti è casuale).
  * Il pepe è letto da PASSWORD_PEPPER o, in sua assenza, da .dev.vars.
  * Per il database remoto usa lo stesso valore del secret di produzione.
  * La password temporanea viene stampata sul terminale (stderr) e va cambiata
@@ -37,7 +38,11 @@ if (!email || !name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
   process.exit(1);
 }
 
-const password = toBase64Url(randomBytes(12)); // 16 caratteri casuali
+const chosen = arg("password") ?? process.env.FIRST_USER_PASSWORD;
+const password = chosen || toBase64Url(randomBytes(12)); // altrimenti 16 caratteri casuali
+if (chosen && chosen.length < 12) {
+  console.error("Attenzione: password temporanea corta. Andrà cambiata al primo accesso (almeno 12 caratteri).");
+}
 const h = await hashPassword(password, pepper());
 const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 
@@ -45,4 +50,4 @@ process.stdout.write(
   `INSERT INTO users (email, name, password_hash, password_salt, password_iterations, must_change_password, active, created_at, updated_at)\n` +
     `VALUES (${sql(email)}, ${sql(name)}, ${sql(h.hash)}, ${sql(h.salt)}, ${h.iterations}, 1, 1, ${sql(now)}, ${sql(now)});\n`,
 );
-console.error(`Password temporanea per ${email}: ${password}\n(da cambiare al primo accesso)`);
+if (!chosen) console.error(`Password temporanea per ${email}: ${password}\n(da cambiare al primo accesso)`);

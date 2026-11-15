@@ -1,0 +1,65 @@
+# Crea il primo utente nel database remoto (solo se non ne esiste ancora nessuno).
+# Gli altri utenti si creano poi dall'app. La password è temporanea: l'app
+# obbliga a cambiarla al primo accesso.
+name: Cloudflare - primo utente
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: Email del primo utente
+        required: true
+      name:
+        description: Nome visualizzato
+        required: true
+      password:
+        description: Password temporanea (da cambiare al primo accesso)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Nasconde la password nei log
+        env:
+          TEMP_PASSWORD: ${{ inputs.password }}
+        run: echo "::add-mask::$TEMP_PASSWORD"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - name: Imposta l'id del database
+        env:
+          D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
+        run: sed -i "s/00000000-0000-0000-0000-000000000000/${D1_DATABASE_ID}/" wrangler.jsonc
+      - name: Crea l'utente se il database non ne ha
+        env:
+          PASSWORD_PEPPER: ${{ secrets.PASSWORD_PEPPER }}
+          FIRST_USER_PASSWORD: ${{ inputs.password }}
+          FIRST_USER_EMAIL: ${{ inputs.email }}
+          FIRST_USER_NAME: ${{ inputs.name }}
+        run: |
+          set -euo pipefail
+          count=$(npx wrangler d1 execute forromanager-db --remote --json --command "SELECT COUNT(*) AS n FROM users" \
+            | node -e 'const r=JSON.parse(require("fs").readFileSync(0));console.log(r[0].results[0].n)')
+          if [ "$count" != "0" ]; then
+            echo "::error::Esistono già $count utenti: crea gli altri dall'app (Altro → Utenti)."
+            exit 1
+          fi
+          umask 077
+          node scripts/create-user.ts --email "$FIRST_USER_EMAIL" --name "$FIRST_USER_NAME" > "$RUNNER_TEMP/user.sql"
+          npx wrangler d1 execute forromanager-db --remote --file "$RUNNER_TEMP/user.sql"
+          rm -f "$RUNNER_TEMP/user.sql"
+          echo "### Primo utente creato. Accedi e cambia subito la password." >> "$GITHUB_STEP_SUMMARY"

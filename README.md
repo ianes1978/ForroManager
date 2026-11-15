@@ -94,6 +94,84 @@ La specifica è generata dalle stesse definizioni usate per validare le richiest
 
 ---
 
+## App (`app/`)
+
+Flutter, interfaccia in italiano pensata per l'uso con una mano (barra in basso,
+pulsante **Incassa** sotto il pollice). Stato gestito con **Riverpod**: un solo
+modello per tutta l'app, con caricamento/errore gestiti in modo uniforme e
+provider facili da sostituire nei test.
+
+### Indirizzo del backend per ambiente
+
+L'indirizzo non è scritto nel codice: si passa in compilazione con un file in
+[`app/config/`](app/config/).
+
+| File | Uso |
+|---|---|
+| `config/local.json` | app web o iOS Simulator con il backend locale (`http://localhost:8787`) |
+| `config/android-emulator.json` | emulatore Android (`http://10.0.2.2:8787`) |
+| `config/prod.json` | produzione: copia `prod.example.json` e metti l'indirizzo del Worker (escluso da git) |
+
+La build web servita dal Worker non ha bisogno dell'indirizzo: usa la stessa origine.
+
+### Avvio locale
+
+Con il backend avviato (`cd api && npm run dev`):
+
+```bash
+cd app
+flutter pub get
+flutter run -d chrome --dart-define-from-file=config/local.json --web-port 5173
+```
+
+Per l'app web servita da un'altra porta, abilita CORS in sviluppo impostando
+`DEV_CORS_ORIGIN=http://localhost:5173` in `api/.dev.vars`.
+
+Su emulatore Android: `flutter run --dart-define-from-file=config/android-emulator.json`.
+
+### Test
+
+```bash
+flutter analyze
+flutter test
+```
+
+### Build
+
+```bash
+# Android (APK)
+flutter build apk --release --dart-define-from-file=config/prod.json
+
+# iOS (su Mac con Xcode; firma con il proprio Apple ID in Xcode)
+flutter build ipa --release --dart-define-from-file=config/prod.json
+
+# Web, da servire come file statici dal Worker
+flutter build web --release --no-web-resources-cdn
+cp -r build/web/. ../api/public/
+```
+
+**Firma Android**: senza configurazione l'APK di rilascio usa la chiave di debug.
+Per una chiave stabile crea un keystore (mai nel repository):
+
+```bash
+keytool -genkey -v -keystore ~/forromanager-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias forromanager
+```
+
+e, in locale, un file `app/android/key.properties` (escluso da git) con
+`storeFile`, `storePassword`, `keyAlias`, `keyPassword`. In GitHub Actions si
+usano invece i secret `ANDROID_KEYSTORE_BASE64` (il file `.jks` in base64),
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`.
+
+### Privacy sul dispositivo
+
+- Il token di sessione è nell'archivio sicuro (Keychain/Keystore); sul web resta
+  solo in memoria e ricaricando la pagina si rifà l'accesso.
+- Nessuna copia locale dei dati: tutto viene letto dall'API al momento.
+- I CSV esportati passano da una cartella temporanea al menu Condividi e poi
+  vengono cancellati.
+
+---
+
 ## Deploy su Cloudflare (da GitHub Actions)
 
 Nomi usati sull'account: Worker **`forromanager-api`**, database **`forromanager-db`**.
@@ -108,4 +186,15 @@ L'indirizzo finale sarà `https://forromanager-api.<tuo-sottodominio>.workers.de
 3. **Preparazione**: in Actions avvia a mano *Cloudflare - preparazione*. Crea il
    database con giurisdizione UE e mostra il suo id nel riepilogo del job.
 4. **Variabile del repository** `D1_DATABASE_ID` con l'id del punto 3.
-5. **Deploy**: avvia a mano il workflow di deploy (vedi la sezione dell'app).
+5. **Deploy**: avvia a mano *Cloudflare - deploy*. Esegue i test, compila l'app
+   web, applica le migrazioni al database remoto e pubblica il Worker. Il
+   riepilogo del job mostra l'indirizzo `https://forromanager-api.<sottodominio>.workers.dev`.
+6. **Primo utente**: avvia a mano *Cloudflare - primo utente* con email, nome e
+   password temporanea. Funziona solo se il database non ha ancora utenti; al
+   primo accesso l'app obbliga a cambiare la password.
+7. **APK**: imposta la variabile del repository `API_BASE_URL` con l'indirizzo del
+   punto 5. Il workflow *App - APK Android* parte a ogni push che tocca `app/`
+   (o a mano) e pubblica l'APK come pre-release del repository.
+
+I workflow avviati a mano compaiono in Actions solo se sono nel ramo predefinito
+del repository.
