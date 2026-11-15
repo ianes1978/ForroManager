@@ -90,10 +90,20 @@ La specifica è generata dalle stesse definizioni usate per validare le richiest
 - **Magazzino**: le scorte sono la somma dei movimenti (carichi, vendite, resi,
   rettifiche), per variante di prodotto. Una vendita scala la scorta, l'annullamento
   la rimette. Si può vendere oltre la scorta: l'app avvisa e la scorta va in negativo.
+- **Più utenti insieme**: i dati stanno solo nel database e ogni salvataggio è
+  una transazione. Incassi e vendite accettano l'header `Idempotency-Key`: se la
+  rete cade dopo il salvataggio e si riprova, l'operazione non viene registrata
+  due volte (le chiavi durano 24 ore). Le modifiche di soci, prodotti, utenti e
+  tariffe accettano `If-Match` con la versione letta (`updatedAt`): se nel
+  frattempo un altro ha salvato, la risposta è 409 `stale` con chi ha modificato,
+  invece di sovrascrivere. L'app usa entrambi.
+- **Senza rete** l'app mostra un messaggio chiaro con "Riprova" e non salva nulla
+  sul telefono.
 - **Vendite a non soci**: se pagate subito non si registra alcun dato
   dell'acquirente; se pagate più tardi solo il nome, cancellato quando la vendita
   è saldata. Annullare il pagamento di una vendita a non socio annulla anche la
-  vendita.
+  vendita. Nei movimenti di magazzino e nel CSV del magazzino ogni vendita indica
+  a chi è andata (socio o "non socio"), anche dopo che il nome è stato cancellato.
 - **Privacy**: database con giurisdizione UE, nessun dato personale nei log,
   CSV con `Cache-Control: no-store`.
 - **Limiti del piano gratuito**: le operazioni su molti soci (generazione
