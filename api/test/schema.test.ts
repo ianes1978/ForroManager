@@ -78,3 +78,16 @@ describe("schema del database", () => {
     ).rejects.toThrow(/FOREIGN KEY/);
   });
 });
+
+describe("registro modifiche", () => {
+  it("ogni tipo di dato registrato ha un nome in italiano", async () => {
+    const { ENTITY_LABELS } = await import("../src/routes/audit.ts");
+    const sources = import.meta.glob("../src/routes/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+    const used = new Set<string>();
+    for (const code of Object.values(sources)) {
+      for (const m of code.matchAll(/auditStatement\(db, [^,]+, "[a-z_]+", "([a-z_]+)"/g)) used.add(m[1]!);
+    }
+    expect(used.size).toBeGreaterThan(10);
+    expect([...used].filter((e) => !ENTITY_LABELS[e])).toEqual([]);
+  });
+});

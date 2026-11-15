@@ -53,7 +53,12 @@ Future<bool> deleteWithUsage(
               title: Text(item.what.startsWith('è ') ? item.what[0].toUpperCase() + item.what.substring(1) : '${item.count} ${item.what}'),
               subtitle: item.examples.isEmpty
                   ? null
-                  : Text(item.examples.join(', ') + (item.count > item.examples.length ? ' e altri ${item.count - item.examples.length}' : '')),
+                  : Text(item.examples.join(', ') +
+                      switch (item.count - item.examples.length) {
+                        <= 0 => '',
+                        1 => ' e un altro',
+                        final n => ' e altri $n',
+                      }),
             ),
           if (u.hint != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(u.hint!)),
           const SizedBox(height: 16),

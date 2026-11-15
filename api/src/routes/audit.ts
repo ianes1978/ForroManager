@@ -15,7 +15,7 @@ const AuditEntrySchema = z
   })
   .openapi("AuditEntry");
 
-const ENTITY_LABELS: Record<string, string> = {
+export const ENTITY_LABELS: Record<string, string> = {
   member: "un socio",
   payment: "un pagamento",
   due: "una quota",
@@ -33,6 +33,9 @@ const ENTITY_LABELS: Record<string, string> = {
   course: "un corso",
   course_period: "un periodo di corso",
   enrollment: "le iscrizioni a un periodo",
+  stock_movement: "un movimento di magazzino",
+  expense: "una spesa",
+  expense_category: "una categoria di spesa",
 };
 const ACTION_LABELS: Record<string, string> = {
   create: "ha creato",
