@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/errors.dart';
 import '../../core/format.dart';
 import '../../data/models.dart';
 import '../../state/providers.dart';
@@ -218,7 +219,12 @@ class _DueTile extends ConsumerWidget {
           if (member.active) ListTile(leading: const Icon(Icons.euro), title: const Text('Incassa'), onTap: () => Navigator.pop(ctx, 'pay')),
           ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('Modifica importo'), onTap: () => Navigator.pop(ctx, 'adjust')),
           if (due.paidCents == 0)
-            ListTile(leading: const Icon(Icons.delete_outline), title: const Text('Annulla quota (generata per errore)'), onTap: () => Navigator.pop(ctx, 'cancel')),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Elimina quota'),
+              subtitle: const Text('Se è stata creata per errore o il socio non deve pagarla.'),
+              onTap: () => Navigator.pop(ctx, 'delete'),
+            ),
         ]),
       ),
     );
@@ -229,10 +235,34 @@ class _DueTile extends ConsumerWidget {
       case 'adjust':
         final changed = await showAdjustSheet(context, ref, due);
         if (changed) invalidateData(ref);
-      case 'cancel':
-        final reason = await askText(context, title: 'Annullare ${due.label.toLowerCase()}?', label: 'Motivo', confirm: 'Annulla quota', destructive: true);
-        if (reason != null && context.mounted && await runAction(context, () => repo.cancelDue(due.id, reason), success: 'Quota annullata.')) {
+      case 'delete':
+        final ok = await confirmAction(context,
+            title: 'Eliminare ${due.label.toLowerCase()}?',
+            message: due.kind == 'prodotto' ? 'La merce torna in magazzino.' : 'Se serve, potrai crearla di nuovo.',
+            confirm: 'Elimina quota',
+            destructive: true);
+        if (!ok || !context.mounted) return;
+        try {
+          await repo.deleteDue(due.id);
+          if (context.mounted) showMessage(context, 'Quota eliminata.');
           invalidateData(ref);
+        } on ApiException catch (e) {
+          // Ha ricevuto pagamenti poi annullati: resta nello storico, si può solo annullare.
+          if (e.code != 'has_payments' || !context.mounted) {
+            if (context.mounted) showMessage(context, errorMessage(e));
+            return;
+          }
+          final reason = await askText(context,
+              title: 'Annullare ${due.label.toLowerCase()}?',
+              message: 'Ha avuto dei pagamenti, poi annullati: non si può eliminare, ma si può annullare. Resterà nello storico.',
+              label: 'Motivo',
+              confirm: 'Annulla quota',
+              destructive: true);
+          if (reason != null && context.mounted && await runAction(context, () => repo.cancelDue(due.id, reason), success: 'Quota annullata.')) {
+            invalidateData(ref);
+          }
+        } catch (e) {
+          if (context.mounted) showMessage(context, errorMessage(e));
         }
     }
   }

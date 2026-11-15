@@ -89,6 +89,17 @@ const cancelRoute = createRoute({
   responses: { 204: { description: "Quota annullata" }, ...commonErrors, 404: errors[404], 409: errors[409] },
 });
 
+const deleteRoute = createRoute({
+  method: "delete",
+  path: "/dues/{id}",
+  tags: ["Quote"],
+  summary: "Elimina una quota mai pagata (creata per errore); se è un prodotto la merce torna in magazzino",
+  description: "Se la quota ha ricevuto pagamenti, anche poi annullati, non si elimina: si può solo annullare con un motivo.",
+  security: bearer,
+  request: { params: IdParam },
+  responses: { 204: { description: "Quota eliminata" }, ...commonErrors, 404: errors[404], 409: errors[409] },
+});
+
 const chargeRoute = createRoute({
   method: "post",
   path: "/members/{id}/charges",
@@ -243,6 +254,27 @@ dueRoutes
       db.prepare("UPDATE dues SET cancelled_at = ?1, cancelled_by = ?2, cancel_reason = ?3 WHERE id = ?4").bind(nowIso(), me, reason, id),
       ...(restock ? [restock] : []),
       auditStatement(db, me, "cancel", "due", id, { memberId: due.member_id, reason }),
+    ]);
+    return c.body(null, 204);
+  })
+  .openapi(deleteRoute, async (c) => {
+    const { id } = c.req.valid("param");
+    const db = c.env.DB;
+    const due = await db
+      .prepare("SELECT id, member_id, kind, year, month, amount_cents, cancelled_at FROM dues WHERE id = ?1")
+      .bind(id)
+      .first<{ id: number; member_id: number | null; kind: string; year: number; month: number | null; amount_cents: number; cancelled_at: string | null }>();
+    if (!due) throw notFound("Quota non trovata.");
+    if (await db.prepare("SELECT 1 FROM payment_allocations WHERE due_id = ?1 LIMIT 1").bind(id).first()) {
+      throw conflict("has_payments", "La quota ha ricevuto dei pagamenti (anche annullati): non si può eliminare, ma puoi annullarla indicando il motivo.");
+    }
+    // I movimenti di magazzino della vendita spariscono con lei: la scorta torna com'era.
+    await db.batch([
+      db.prepare("DELETE FROM stock_movements WHERE due_id = ?1").bind(id),
+      db.prepare("DELETE FROM dues WHERE id = ?1").bind(id),
+      auditStatement(db, c.get("user").id, "delete", "due", id, {
+        memberId: due.member_id, kind: due.kind, year: due.year, month: due.month, amountCents: due.amount_cents, wasCancelled: due.cancelled_at !== null,
+      }),
     ]);
     return c.body(null, 204);
   })

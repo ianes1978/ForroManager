@@ -80,6 +80,19 @@ describe("vendite ai soci con variante", () => {
     expect(await stockOf(p.id, v.id)).toBe(5);
   });
 
+  it("eliminando un addebito mai pagato la merce torna in magazzino e i movimenti spariscono", async () => {
+    const p = await tshirt();
+    const v = p.variants[1]!;
+    await stock(v.id, "carico", 4);
+    const id = await member();
+    const sale = (await (await api(`/members/${id}/charges`, { token, body: { productId: p.id, variantId: v.id, quantity: 1 } })).json()) as Sale;
+    expect(await stockOf(p.id, v.id)).toBe(3);
+    expect((await api(`/dues/${sale.id}`, { token, method: "DELETE" })).status).toBe(204);
+    expect(await stockOf(p.id, v.id)).toBe(4);
+    const moves = await env.DB.prepare("SELECT COUNT(*) AS n FROM stock_movements WHERE due_id = ?1").bind(sale.id).first<{ n: number }>();
+    expect(moves!.n).toBe(0);
+  });
+
   it("richiede la variante per i prodotti con scorte e permette di vendere oltre la scorta", async () => {
     const p = await tshirt();
     const id = await member();

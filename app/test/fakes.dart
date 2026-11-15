@@ -59,6 +59,19 @@ class FakeRepository extends Repository {
   final saleKeys = <String?>[];
   bool failNextPaymentWithNetwork = false;
 
+  final deletedDues = <int>[];
+  final cancelledDues = <(int, String)>[];
+  Object? deleteDueError;
+
+  @override
+  Future<void> deleteDue(int id) async {
+    if (deleteDueError != null) throw deleteDueError!;
+    deletedDues.add(id);
+  }
+
+  @override
+  Future<void> cancelDue(int id, String reason) async => cancelledDues.add((id, reason));
+
   Payment? paymentDetail;
   Map<String, Object?>? lastUpdate;
 

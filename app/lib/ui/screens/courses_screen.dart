@@ -385,7 +385,7 @@ class PeriodScreen extends ConsumerWidget {
               ),
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('Per togliere un iscritto apri la sua scheda, tocca la quota del periodo e scegli "Annulla quota".', style: theme.textTheme.bodySmall),
+              child: Text('Per togliere un iscritto apri la sua scheda, tocca la quota del periodo e scegli "Elimina quota".', style: theme.textTheme.bodySmall),
             ),
           ]);
         },

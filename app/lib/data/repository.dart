@@ -54,6 +54,7 @@ class Repository {
   Future<Due> adjustDue(int id, int amountCents, String? reason) async =>
       Due.fromJson(await api.post('/dues/$id/adjust', {'amountCents': amountCents, 'reason': ?reason}) as Json);
   Future<void> cancelDue(int id, String reason) => api.post('/dues/$id/cancel', {'reason': reason});
+  Future<void> deleteDue(int id) => api.delete('/dues/$id');
   /// Addebita un prodotto a un socio. Restituisce la quota e la scorta rimasta (null se senza scorte).
   Future<(Due, int?)> chargeProduct(int memberId, int productId,
       {int? variantId, int quantity = 1, int? amountCents, String? reason, String? idempotencyKey}) async {

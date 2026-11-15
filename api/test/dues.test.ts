@@ -114,6 +114,25 @@ describe("modifica e annullamento di una quota", () => {
     expect(await errorCode(cancel)).toBe("has_payments");
   });
 
+  it("elimina una quota mai pagata; con pagamenti, anche annullati, la rifiuta", async () => {
+    const { member: id, due } = await oneDue();
+    expect((await api(`/dues/${due.id}`, { token, method: "DELETE" })).status).toBe(204);
+    expect((await dues(id, 2043)).items.some((d) => d.id === due.id)).toBe(false);
+    expect((await api(`/dues/${due.id}`, { token, method: "DELETE" })).status).toBe(404);
+
+    const other = await oneDue();
+    const me = await env.DB.prepare("SELECT id FROM users LIMIT 1").first<{ id: number }>();
+    const p = await env.DB.prepare(
+      `INSERT INTO payments (member_id, paid_on, amount_cents, method_id, recorded_by, created_at, voided_at, voided_by, void_reason)
+       VALUES (?1, '2043-06-01', 2000, 1, ?2, '2043-06-01T00:00:00Z', '2043-06-02T00:00:00Z', ?2, 'Doppio') RETURNING id`,
+    )
+      .bind(other.member, me!.id)
+      .first<{ id: number }>();
+    await env.DB.prepare("INSERT INTO payment_allocations (payment_id, due_id, amount_cents) VALUES (?1, ?2, 2000)").bind(p!.id, other.due.id).run();
+    expect(await errorCode(await api(`/dues/${other.due.id}`, { token, method: "DELETE" }))).toBe("has_payments");
+    expect((await api(`/dues/${other.due.id}/cancel`, { token, body: { reason: "Esonerato" } })).status).toBe(204);
+  });
+
   it("annulla una quota senza pagamenti, che non compare più e si può rigenerare", async () => {
     const { member: id, due } = await oneDue();
     expect((await api(`/dues/${due.id}/cancel`, { token, body: { reason: "Generata per errore" } })).status).toBe(204);

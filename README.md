@@ -89,6 +89,9 @@ La specifica è generata dalle stesse definizioni usate per validare le richiest
 - **Pagamenti** mai cancellati: si correggono (data, metodo, nota, importo, voci
   e socio, con `If-Match`) oppure si annullano con un motivo se registrati per
   errore. Ogni modifica finisce nel registro (`audit_log`) con il prima e il dopo.
+- **Quote** (tessera, mensili, iscrizioni ai corsi, prodotti) si eliminano se non
+  hanno mai ricevuto pagamenti, anche poi annullati; per i prodotti la merce torna
+  in magazzino. Altrimenti si annullano con un motivo e restano nello storico.
 - **Corsi e periodi** si eliminano solo se non hanno iscritti né pagamenti
   (ad esempio creati per sbaglio); altrimenti si disattivano.
 - **Magazzino**: le scorte sono la somma dei movimenti (carichi, vendite, resi,
