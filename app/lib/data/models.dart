@@ -469,7 +469,22 @@ class StatusMember {
 }
 
 class IncomeReport {
-  IncomeReport({required this.year, required this.totalCents, required this.byMonth, required this.byMethod, required this.byKind, this.membersCents = 0, this.nonMembersCents = 0});
+  IncomeReport({
+    required this.year,
+    required this.totalCents,
+    required this.byMonth,
+    required this.byMethod,
+    required this.byKind,
+    this.membersCents = 0,
+    this.nonMembersCents = 0,
+    this.expensesCents = 0,
+    this.expensesByMonth = const [],
+    this.expensesByCategory = const [],
+    this.toReimburseCents = 0,
+    this.toReimburseCount = 0,
+    this.noReceiptCount = 0,
+    this.balanceCents = 0,
+  });
   factory IncomeReport.fromJson(Json j) => IncomeReport(
         year: j['year'] as int,
         totalCents: j['totalCents'] as int,
@@ -478,6 +493,15 @@ class IncomeReport {
         byKind: {for (final e in (j['byKind'] as Json).entries) e.key: e.value as int},
         membersCents: ((j['bySource'] as Json?)?['soci'] as int?) ?? 0,
         nonMembersCents: ((j['bySource'] as Json?)?['nonSoci'] as int?) ?? 0,
+        expensesCents: ((j['expenses'] as Json?)?['totalCents'] as int?) ?? 0,
+        expensesByMonth: [for (final v in ((j['expenses'] as Json?)?['byMonth'] as List?) ?? const []) v as int],
+        expensesByCategory: [
+          for (final c in ((j['expenses'] as Json?)?['byCategory'] as List?) ?? const []) ((c as Json)['name'] as String, c['cents'] as int),
+        ],
+        toReimburseCents: ((j['expenses'] as Json?)?['toReimburseCents'] as int?) ?? 0,
+        toReimburseCount: ((j['expenses'] as Json?)?['toReimburseCount'] as int?) ?? 0,
+        noReceiptCount: ((j['expenses'] as Json?)?['noReceiptCount'] as int?) ?? 0,
+        balanceCents: (j['balanceCents'] as int?) ?? (j['totalCents'] as int),
       );
   final int year;
   final int totalCents;
@@ -486,6 +510,14 @@ class IncomeReport {
   final Map<String, int> byKind;
   final int membersCents;
   final int nonMembersCents;
+  final int expensesCents;
+  final List<int> expensesByMonth;
+  final List<(String, int)> expensesByCategory;
+  final int toReimburseCents;
+  final int toReimburseCount;
+  final int noReceiptCount;
+  /// Incassi meno spese dell'anno.
+  final int balanceCents;
 }
 
 class AuditEntry {
@@ -688,4 +720,79 @@ class UsageItem {
   final int count;
   final bool blocking;
   final List<String> examples;
+}
+
+/// Spesa dell'associazione: pagata dalla cassa o anticipata da qualcuno da rimborsare.
+class Expense {
+  Expense({
+    required this.id,
+    required this.spentOn,
+    required this.description,
+    required this.amountCents,
+    required this.categoryId,
+    required this.categoryName,
+    this.methodCode,
+    this.methodLabel,
+    this.advancedBy,
+    this.reimbursedOn,
+    required this.toReimburse,
+    required this.hasReceipt,
+    this.note,
+    required this.createdBy,
+    required this.updatedAt,
+  });
+  factory Expense.fromJson(Json j) => Expense(
+        id: j['id'] as int,
+        spentOn: j['spentOn'] as String,
+        description: j['description'] as String,
+        amountCents: j['amountCents'] as int,
+        categoryId: (j['category'] as Json)['id'] as int,
+        categoryName: (j['category'] as Json)['name'] as String,
+        methodCode: (j['method'] as Json?)?['code'] as String?,
+        methodLabel: (j['method'] as Json?)?['label'] as String?,
+        advancedBy: j['advancedBy'] as String?,
+        reimbursedOn: j['reimbursedOn'] as String?,
+        toReimburse: j['toReimburse'] as bool,
+        hasReceipt: j['hasReceipt'] as bool,
+        note: j['note'] as String?,
+        createdBy: j['createdBy'] as String,
+        updatedAt: j['updatedAt'] as String,
+      );
+  final int id;
+  final String spentOn;
+  final String description;
+  final int amountCents;
+  final int categoryId;
+  final String categoryName;
+  final String? methodCode;
+  final String? methodLabel;
+  final String? advancedBy;
+  final String? reimbursedOn;
+  final bool toReimburse;
+  final bool hasReceipt;
+  final String? note;
+  final String createdBy;
+  final String updatedAt;
+}
+
+class ExpenseList {
+  ExpenseList({required this.items, required this.totalCents, required this.toReimburseCents, required this.toReimburseCount});
+  factory ExpenseList.fromJson(Json j) => ExpenseList(
+        items: [for (final e in j['items'] as List) Expense.fromJson(e as Json)],
+        totalCents: j['totalCents'] as int,
+        toReimburseCents: j['toReimburseCents'] as int,
+        toReimburseCount: j['toReimburseCount'] as int,
+      );
+  final List<Expense> items;
+  final int totalCents;
+  final int toReimburseCents;
+  final int toReimburseCount;
+}
+
+class ExpenseCategory {
+  ExpenseCategory(this.id, this.name, this.active);
+  factory ExpenseCategory.fromJson(Json j) => ExpenseCategory(j['id'] as int, j['name'] as String, j['active'] as bool);
+  final int id;
+  final String name;
+  final bool active;
 }

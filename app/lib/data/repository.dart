@@ -56,6 +56,17 @@ class Repository {
   Future<void> cancelDue(int id, String reason) => api.post('/dues/$id/cancel', {'reason': reason});
   Future<void> deleteDue(int id) => api.delete('/dues/$id');
 
+  // Spese -------------------------------------------------------------------
+  Future<ExpenseList> expenses({String? from, String? to, bool toReimburse = false, bool noReceipt = false}) async => ExpenseList.fromJson(await api.get('/expenses',
+      query: {'from': from, 'to': to, 'toReimburse': toReimburse ? 'true' : null, 'noReceipt': noReceipt ? 'true' : null}) as Json);
+  Future<Expense> createExpense(Json data, {String? idempotencyKey}) async => Expense.fromJson(await api.post('/expenses', data, idempotencyKey) as Json);
+  Future<Expense> updateExpense(int id, Json data, {String? version}) async => Expense.fromJson(await api.patch('/expenses/$id', data, version: version) as Json);
+  Future<void> deleteExpense(int id) => api.delete('/expenses/$id');
+  Future<List<ExpenseCategory>> expenseCategories() async => _items(await api.get('/expense-categories'), ExpenseCategory.fromJson);
+  Future<void> createExpenseCategory(String name) => api.post('/expense-categories', {'name': name});
+  Future<void> updateExpenseCategory(int id, {String? name, bool? active}) => api.patch('/expense-categories/$id', {'name': ?name, 'active': ?active});
+  Future<void> deleteExpenseCategory(int id) => api.delete('/expense-categories/$id');
+
   // Eliminazione ------------------------------------------------------------
   /// Dove è usato un dato: kind è member, product, variant, fee-category, payment-method, form, course, course-period, due.
   Future<Usage> usage(String kind, Object id) async => Usage.fromJson(await api.get('/usage/$kind/$id') as Json);

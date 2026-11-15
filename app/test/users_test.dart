@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forromanager/data/models.dart';
 
@@ -14,7 +15,7 @@ void main() {
     final r = await pumpApp(tester, repo: repo());
     await tester.tap(find.text('Altro'));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Utenti'));
+    await tester.scrollUntilVisible(find.text('Utenti'), 100, scrollable: find.byType(Scrollable).last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Utenti'));
     await tester.pumpAndSettle();

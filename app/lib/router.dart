@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'data/models.dart';
 import 'state/providers.dart';
 import 'ui/screens/audit_screen.dart';
 import 'ui/screens/collect_screen.dart';
 import 'ui/screens/courses_screen.dart';
+import 'ui/screens/expenses_screen.dart';
 import 'ui/screens/export_screen.dart';
 import 'ui/screens/fees_screen.dart';
 import 'ui/screens/forms_screen.dart';
@@ -89,6 +91,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/altro/tariffe', builder: (_, _) => const FeesScreen()),
       GoRoute(path: '/altro/corsi', builder: (_, _) => const CoursesScreen()),
+      GoRoute(path: '/altro/spese', builder: (_, _) => const ExpensesScreen()),
+      GoRoute(path: '/altro/spese/nuova', builder: (_, _) => const ExpenseFormScreen()),
+      GoRoute(path: '/altro/spese/modifica', builder: (_, s) => ExpenseFormScreen(expense: s.extra as Expense?)),
+      GoRoute(path: '/altro/spese/categorie', builder: (_, _) => const ExpenseCategoriesScreen()),
       GoRoute(
         path: '/altro/corsi/periodo/:id',
         builder: (_, s) => PeriodScreen(periodId: int.parse(s.pathParameters['id']!)),

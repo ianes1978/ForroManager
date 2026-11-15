@@ -36,22 +36,33 @@ Map<String, dynamic> sample() => {
         {'data': '2026-03-01', 'prodotto': 'Maglietta', 'variante': 'M · nero', 'movimento': 'vendita', 'quantita': -1, 'aChi': 'Non socio',
           'nota': null, 'registratoDa': 'Roberta'},
       ],
+      'expenses': [
+        {'data': '2026-03-02', 'descrizione': 'Sala marzo', 'categoria': 'Affitto sala', 'importoCents': 2000, 'pagataCon': 'Bonifico',
+          'anticipataDa': null, 'rimborsataIl': null, 'daRimborsare': false, 'ricevuta': true, 'nota': null, 'registrataDa': 'Roberta'},
+        {'data': '2026-03-05', 'descrizione': 'Corde', 'categoria': 'Materiale e merce', 'importoCents': 500, 'pagataCon': null,
+          'anticipataDa': 'Stefano', 'rimborsataIl': null, 'daRimborsare': true, 'ricevuta': false, 'nota': null, 'registrataDa': 'Roberta'},
+      ],
     };
 
 void main() {
   setUpAll(() => initializeDateFormatting('it_IT'));
 
-  test('il report ha i sei fogli con importi, date e totali corretti', () {
+  test('il report ha i sette fogli con importi, date e totali corretti', () {
     final bytes = buildExcelReport(sample(), associationName: 'ForroManager');
     final out = Platform.environment['EXCEL_OUT'];
     if (out != null) File(out).writeAsBytesSync(bytes);
     final x = Excel.decodeBytes(bytes);
-    expect(x.tables.keys.toSet(), {'Riepilogo', 'Soci', 'Quote', 'Pagamenti', 'Vendite', 'Magazzino'});
+    expect(x.tables.keys.toSet(), {'Riepilogo', 'Soci', 'Quote', 'Pagamenti', 'Vendite', 'Magazzino', 'Spese'});
     final riepilogo = x.tables['Riepilogo']!;
     String text(int c, int r) => riepilogo.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value.toString();
     expect(text(0, 0), 'ForroManager · Report Anno 2026');
     final totalRow = List.generate(riepilogo.maxRows, (i) => i).firstWhere((i) => text(0, i) == 'Totale incassato');
     expect(num.parse(text(1, totalRow)), 45); // annullati esclusi
+    final balanceRow = List.generate(riepilogo.maxRows, (i) => i).firstWhere((i) => text(0, i) == 'Saldo (incassi − spese)');
+    expect(num.parse(text(1, balanceRow)), 20); // 45 − 20 − 5
+    final toReimburse = List.generate(riepilogo.maxRows, (i) => i).firstWhere((i) => text(0, i) == 'Ancora da rimborsare');
+    expect(num.parse(text(1, toReimburse)), 5);
+    expect(x.tables['Spese']!.maxRows, 4); // intestazione + 2 righe + totale
     final pagamenti = x.tables['Pagamenti']!;
     expect(pagamenti.maxRows, 5); // intestazione + 3 righe + totale
   });

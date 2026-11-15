@@ -75,6 +75,12 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
               final max = r.byMonth.fold(1, (a, b) => a > b ? a : b);
               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('Totale ${euro(r.totalCents)}', style: theme.textTheme.headlineSmall)),
+                if (r.expensesCents > 0)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                    child: Text('Spese ${euro(r.expensesCents)} · Saldo ${euro(r.balanceCents)}'
+                        '${r.toReimburseCount > 0 ? ' · da rimborsare ${euro(r.toReimburseCents)}' : ''}'),
+                  ),
                 const SizedBox(height: 12),
                 // Barre mensili: altezza proporzionale all'incasso del mese.
                 SizedBox(
@@ -113,6 +119,30 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                 ListTile(dense: true, title: const Text('Quote mensili'), trailing: Text(euro(r.byKind['mensile'] ?? 0))),
                 ListTile(dense: true, title: const Text('Corsi (periodi)'), trailing: Text(euro(r.byKind['periodo'] ?? 0))),
                 ListTile(dense: true, title: const Text('Prodotti ed eventi'), trailing: Text(euro(r.byKind['prodotto'] ?? 0))),
+                SectionTitle('Spese ${r.year}', trailing: TextButton(onPressed: () => context.push('/altro/spese'), child: const Text('Apri'))),
+                ListTile(dense: true, title: const Text('Incassi'), trailing: Text(euro(r.totalCents))),
+                ListTile(dense: true, title: const Text('Spese'), trailing: Text('− ${euro(r.expensesCents)}')),
+                ListTile(
+                  title: const Text('Saldo', style: TextStyle(fontWeight: FontWeight.w600)),
+                  trailing: Text(euro(r.balanceCents),
+                      style: theme.textTheme.titleMedium?.copyWith(color: r.balanceCents < 0 ? theme.colorScheme.error : null, fontWeight: FontWeight.w600)),
+                ),
+                if (r.toReimburseCount > 0)
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.account_balance_wallet_outlined),
+                    title: Text('Da rimborsare a chi ha anticipato (${r.toReimburseCount})'),
+                    trailing: StatusBadge(euro(r.toReimburseCents), tone: Tone.warn),
+                    onTap: () => context.push('/altro/spese'),
+                  ),
+                if (r.noReceiptCount > 0)
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.receipt_outlined),
+                    title: Text('${r.noReceiptCount} ${r.noReceiptCount == 1 ? 'spesa' : 'spese'} senza ricevuta'),
+                    onTap: () => context.push('/altro/spese'),
+                  ),
+                for (final (name, cents) in r.expensesByCategory) ListTile(dense: true, title: Text(name), trailing: Text(euro(cents))),
               ]);
             },
           ),

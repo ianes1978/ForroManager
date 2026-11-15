@@ -3,7 +3,7 @@ import 'package:excel/excel.dart';
 import 'format.dart';
 
 /// Costruisce il report Excel (.xlsx) a partire dai dati di /reports/full.
-/// Fogli: Riepilogo, Soci, Quote, Pagamenti, Vendite, Magazzino.
+/// Fogli: Riepilogo, Soci, Quote, Pagamenti, Vendite, Magazzino, Spese.
 /// Gli importi arrivano in centesimi e vengono scritti come euro con formato €.
 List<int> buildExcelReport(Map<String, dynamic> data, {required String associationName}) {
   final year = data['year'] as int?;
@@ -14,6 +14,8 @@ List<int> buildExcelReport(Map<String, dynamic> data, {required String associati
   final payments = _rows(data['payments']);
   final sales = _rows(data['sales']);
   final stock = _rows(data['stock']);
+  // I report generati prima dell'introduzione delle spese non hanno questa chiave.
+  final expenses = _rows(data['expenses'] ?? const []);
   final period = year == null ? 'Tutto lo storico' : 'Anno $year';
   final generated = DateTime.parse(data['generatedAt'] as String).toLocal();
 
@@ -31,6 +33,23 @@ List<int> buildExcelReport(Map<String, dynamic> data, {required String associati
   r.kv('Pagamenti annullati', payments.length - valid.length);
   r.kv('Da soci', valid.where((p) => p['socio'] != 'Non socio').fold<int>(0, (s, p) => s + (p['importoCents'] as int)), euro: true);
   r.kv('Da non soci', valid.where((p) => p['socio'] == 'Non socio').fold<int>(0, (s, p) => s + (p['importoCents'] as int)), euro: true);
+  r.blank();
+
+  final spent = expenses.fold<int>(0, (s, e) => s + (e['importoCents'] as int));
+  r.section('Spese e saldo');
+  r.kv('Totale incassato', total, euro: true);
+  r.kv('Totale spese', spent, euro: true);
+  r.kv('Saldo (incassi − spese)', total - spent, euro: true, bold: true);
+  final byCategory = <String, int>{};
+  for (final e in expenses) {
+    byCategory[e['categoria'] as String] = (byCategory[e['categoria'] as String] ?? 0) + (e['importoCents'] as int);
+  }
+  for (final e in byCategory.entries) {
+    r.kv('  ${e.key}', e.value, euro: true);
+  }
+  final open = expenses.where((e) => e['daRimborsare'] == true).toList();
+  r.kv('Ancora da rimborsare', open.fold<int>(0, (s, e) => s + (e['importoCents'] as int)), euro: true);
+  r.kv('Spese senza ricevuta', expenses.where((e) => e['ricevuta'] != true).length);
   r.blank();
 
   r.section(year == null ? 'Incassi per anno' : 'Incassi per mese');
@@ -144,6 +163,17 @@ List<int> buildExcelReport(Map<String, dynamic> data, {required String associati
   for (final x in stock) {
     w.row([_Date(x['data']), x['prodotto'], x['variante'], moves[x['movimento']] ?? x['movimento'], x['quantita'], x['aChi'], x['nota'], x['registratoDa']]);
   }
+
+  // --- Spese ----------------------------------------------------------------
+  final x = b.sheet('Spese', widths: [12, 34, 20, 12, 14, 18, 14, 14, 10, 28, 16]);
+  x.header(['Data', 'Descrizione', 'Categoria', 'Importo', 'Pagata con', 'Anticipata da', 'Rimborsata il', 'Da rimborsare', 'Ricevuta', 'Nota', 'Registrata da']);
+  for (final e in expenses) {
+    x.row([
+      _Date(e['data']), e['descrizione'], e['categoria'], _Euro(e['importoCents'] as int), e['pagataCon'], e['anticipataDa'], _Date(e['rimborsataIl']),
+      e['daRimborsare'] == true ? 'sì' : '', e['ricevuta'] == true ? 'sì' : 'no', e['nota'], e['registrataDa'],
+    ]);
+  }
+  x.totals(['Totale', null, null, _sum(expenses, 'importoCents'), null, null, null, null, null, null, null]);
 
   excel.delete('Sheet1');
   excel.setDefaultSheet('Riepilogo');

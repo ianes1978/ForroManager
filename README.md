@@ -3,7 +3,7 @@
 Registro dei pagamenti dell'associazione: soci, tessera annuale (anno solare),
 corsi a periodi di durata libera (mese, trimestre, quadrimestre...) con iscrizioni,
 quote mensili, prodotti ed eventi (anche venduti a non soci), magazzino con taglie
-e colori, moduli firmati, incassi, riepiloghi e report Excel. È usato in
+e colori, moduli firmati, incassi, spese, riepiloghi e report Excel. È usato in
 condivisione dai membri del direttivo (un solo ruolo: tutti possono tutto).
 
 | Cartella | Contenuto |
@@ -99,6 +99,10 @@ La specifica è generata dalle stesse definizioni usate per validare le richiest
   elenca dove è usato con qualche esempio (es. "4 partecipanti: Ferri Giulia,
   Ricci Elena...") e propone l'alternativa (disattivare, segnare cessato, annullare).
   Eliminando un socio i suoi dati personali escono anche dal registro modifiche.
+- **Spese**: ogni spesa ha data, descrizione, importo, categoria (modificabili) e
+  ricevuta sì/no. È pagata dalla cassa con un metodo, oppure anticipata da qualcuno
+  (si salva solo il nome) e poi rimborsata. Il riepilogo e il report Excel mostrano
+  spese per mese e categoria, quanto resta da rimborsare e il saldo incassi − spese.
 - **Correzioni**: oltre ai dati anagrafici si correggono pagamenti, importi delle
   quote, mesi dei periodi, taglia e colore delle varianti; un carico o una
   rettifica di magazzino sbagliati si eliminano.

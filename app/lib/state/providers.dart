@@ -142,6 +142,14 @@ final statusReportProvider = FutureProvider.autoDispose<StatusReport>((ref) => r
 final incomeReportProvider =
     FutureProvider.autoDispose.family<IncomeReport, int>((ref, year) => ref.watch(repositoryProvider).incomeReport(year));
 
+typedef ExpensesQuery = ({String? from, String? to, bool toReimburse, bool noReceipt});
+
+final expensesProvider = FutureProvider.autoDispose.family<ExpenseList, ExpensesQuery>(
+  (ref, q) => ref.watch(repositoryProvider).expenses(from: q.from, to: q.to, toReimburse: q.toReimburse, noReceipt: q.noReceipt),
+);
+
+final expenseCategoriesProvider = FutureProvider.autoDispose<List<ExpenseCategory>>((ref) => ref.watch(repositoryProvider).expenseCategories());
+
 final usersProvider = FutureProvider.autoDispose<List<AppUser>>((ref) => ref.watch(repositoryProvider).users());
 
 final auditProvider = FutureProvider.autoDispose<List<AuditEntry>>((ref) => ref.watch(repositoryProvider).audit(limit: 100));
@@ -158,6 +166,8 @@ void invalidateData(WidgetRef ref) {
     paymentProvider,
     statusReportProvider,
     incomeReportProvider,
+    expensesProvider,
+    expenseCategoriesProvider,
     feesProvider,
     productsProvider,
     productProvider,

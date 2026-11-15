@@ -59,6 +59,26 @@ class FakeRepository extends Repository {
   final saleKeys = <String?>[];
   bool failNextPaymentWithNetwork = false;
 
+  Json? lastExpense;
+  final expenseKeys = <String?>[];
+
+  @override
+  Future<List<ExpenseCategory>> expenseCategories() async => [ExpenseCategory(1, 'Affitto sala', true), ExpenseCategory(2, 'Materiale e merce', true)];
+
+  @override
+  Future<Expense> createExpense(Json data, {String? idempotencyKey}) async {
+    expenseKeys.add(idempotencyKey);
+    lastExpense = data;
+    return Expense(
+        id: 1, spentOn: data['spentOn'] as String, description: data['description'] as String, amountCents: data['amountCents'] as int,
+        categoryId: 1, categoryName: 'Affitto sala', toReimburse: data['advancedBy'] != null && data['reimbursedOn'] == null,
+        hasReceipt: data['hasReceipt'] as bool, createdBy: 'Roberta', updatedAt: '2026-11-15T10:00:00Z');
+  }
+
+  @override
+  Future<ExpenseList> expenses({String? from, String? to, bool toReimburse = false, bool noReceipt = false}) async =>
+      ExpenseList(items: const [], totalCents: 0, toReimburseCents: 0, toReimburseCount: 0);
+
   /// Risposta di "dove è usato"; null = non usato.
   Usage? usageResult;
   final usageCalls = <String>[];
