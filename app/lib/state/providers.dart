@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/misc.dart' show ProviderOrFamily;
 
 import '../config/env.dart';
 import '../core/api_client.dart';
+import '../core/operation_keys.dart';
 import '../core/session_store.dart';
 import '../data/models.dart';
 import '../data/repository.dart';
@@ -13,6 +14,9 @@ final sessionStoreProvider = Provider<SessionStore>((ref) => createSessionStore(
 final apiClientProvider = Provider<ApiClient>(
   (ref) => ApiClient(baseUrl: Env.apiBase, store: ref.watch(sessionStoreProvider)),
 );
+
+/// Chiavi anti-doppione delle operazioni in corso (solo in memoria).
+final operationKeysProvider = Provider<OperationKeys>((ref) => OperationKeys());
 
 final repositoryProvider = Provider<Repository>((ref) => Repository(ref.watch(apiClientProvider)));
 

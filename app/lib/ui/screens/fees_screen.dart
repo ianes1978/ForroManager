@@ -19,7 +19,7 @@ class _FeesScreenState extends ConsumerState<FeesScreen> {
     final amount = TextEditingController(text: fee.amountCents == null ? '' : centsToInput(fee.amountCents!));
     final formKey = GlobalKey<FormState>();
     var applyToUnpaid = false;
-    final saved = await showModalBottomSheet<bool>(
+    await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -47,7 +47,7 @@ class _FeesScreenState extends ConsumerState<FeesScreen> {
                   final cents = parseEuro(amount.text)!;
                   int updated = 0;
                   final ok = await runAction(ctx, () async {
-                    updated = await ref.read(repositoryProvider).setFee(_year, fee.categoryId, cents, applyToUnpaid: applyToUnpaid);
+                    updated = await ref.read(repositoryProvider).setFee(_year, fee.categoryId, cents, applyToUnpaid: applyToUnpaid, version: fee.version);
                   });
                   if (ok && ctx.mounted) {
                     showMessage(ctx, updated > 0 ? 'Tariffa aggiornata, $updated quote ricalcolate.' : 'Tariffa aggiornata.');
@@ -61,7 +61,8 @@ class _FeesScreenState extends ConsumerState<FeesScreen> {
         ),
       ),
     );
-    if (saved == true) invalidateData(ref);
+    // Ricarica anche dopo un errore: se un altro ha cambiato la tariffa si vede il valore nuovo.
+    invalidateData(ref);
   }
 
   Future<void> _addCategory() async {

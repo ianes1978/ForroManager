@@ -61,10 +61,17 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
       _fieldErrors = {};
     });
     final repo = ref.read(repositoryProvider);
+    final keys = ref.read(operationKeysProvider);
+    final signature = 'vendita|${widget.memberId}|${p.id}|${_variant?.id}|$_quantity|$amount|${_reason.text.trim()}|$payNow|$_method|${_buyer.text.trim()}';
+    final key = keys.keyFor(signature);
     try {
       final (Due due, int? stockAfter) = _isMember
           ? await repo.chargeProduct(widget.memberId!, p.id,
-              variantId: _variant?.id, quantity: _quantity, amountCents: changed ? amount : null, reason: changed ? _reason.text.trim() : null)
+              variantId: _variant?.id,
+              quantity: _quantity,
+              amountCents: changed ? amount : null,
+              reason: changed ? _reason.text.trim() : null,
+              idempotencyKey: key)
           : await repo.createSale(
               productId: p.id,
               variantId: _variant?.id,
@@ -73,7 +80,9 @@ class _SaleScreenState extends ConsumerState<SaleScreen> {
               reason: changed ? _reason.text.trim() : null,
               buyerName: payNow ? null : _buyer.text.trim(),
               payNowMethod: payNow ? _method : null,
+              idempotencyKey: key,
             );
+      keys.done(signature);
       invalidateData(ref);
       if (!mounted) return;
       final stockNote = stockAfter != null && stockAfter < 0 ? ' Attenzione: la scorta ora è $stockAfter.' : '';

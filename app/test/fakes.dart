@@ -53,6 +53,9 @@ class FakeRepository extends Repository {
   Map<String, Object?>? lastPayment;
   Map<String, Object?>? lastSale;
   List<Product> productsList = [];
+  final paymentKeys = <String?>[];
+  final saleKeys = <String?>[];
+  bool failNextPaymentWithNetwork = false;
 
   @override
   Future<List<Product>> products({bool includeInactive = false}) async => productsList;
@@ -66,7 +69,9 @@ class FakeRepository extends Repository {
     String? reason,
     String? buyerName,
     String? payNowMethod,
+    String? idempotencyKey,
   }) async {
+    saleKeys.add(idempotencyKey);
     lastSale = {
       'productId': productId,
       'variantId': variantId,
@@ -131,7 +136,13 @@ class FakeRepository extends Repository {
     required List<PayItem> items,
     String? note,
     int? packageCategoryId,
+    String? idempotencyKey,
   }) async {
+    paymentKeys.add(idempotencyKey);
+    if (failNextPaymentWithNetwork) {
+      failNextPaymentWithNetwork = false;
+      throw const NetworkException();
+    }
     lastPayment = {
       'memberId': memberId,
       'amountCents': amountCents,

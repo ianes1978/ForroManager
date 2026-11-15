@@ -27,6 +27,7 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
   int? _annualCategoryId;
   bool _loaded = false;
   bool _busy = false;
+  String? _version;
   Map<String, String> _fieldErrors = {};
 
   void _fill(Member m) {
@@ -39,6 +40,7 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
     _notes.text = m.notes ?? '';
     _joinedOn = m.joinedOn;
     _annualCategoryId = m.annualCategory.id;
+    _version = m.updatedAt;
   }
 
   Future<void> _pickDate() async {
@@ -68,7 +70,7 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
     };
     final repo = ref.read(repositoryProvider);
     try {
-      final m = widget.memberId == null ? await repo.createMember(data) : await repo.updateMember(widget.memberId!, data);
+      final m = widget.memberId == null ? await repo.createMember(data) : await repo.updateMember(widget.memberId!, data, version: _version);
       invalidateData(ref);
       if (!mounted) return;
       showMessage(context, widget.memberId == null ? 'Socio creato.' : 'Modifiche salvate.');
@@ -78,6 +80,11 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
         context.pop();
       }
     } on ApiException catch (e) {
+      if (e.code == 'stale') {
+        // Un altro ha salvato nel frattempo: si ricaricano i dati aggiornati.
+        _loaded = false;
+        ref.invalidate(memberProvider(widget.memberId!));
+      }
       setState(() => _fieldErrors = e.fields);
       if (mounted) showMessage(context, e.message);
     } on Object catch (e) {

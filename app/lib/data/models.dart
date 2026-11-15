@@ -21,19 +21,21 @@ class SessionUser {
 }
 
 class AppUser {
-  AppUser({required this.id, required this.email, required this.name, required this.active, required this.mustChangePassword});
+  AppUser({required this.id, required this.email, required this.name, required this.active, required this.mustChangePassword, this.updatedAt});
   factory AppUser.fromJson(Json j) => AppUser(
         id: j['id'] as int,
         email: j['email'] as String,
         name: j['name'] as String,
         active: j['active'] as bool,
         mustChangePassword: j['mustChangePassword'] as bool,
+        updatedAt: j['updatedAt'] as String?,
       );
   final int id;
   final String email;
   final String name;
   final bool active;
   final bool mustChangePassword;
+  final String? updatedAt;
 }
 
 class CategoryRef {
@@ -93,6 +95,7 @@ class Member {
     required this.monthlyCategory,
     this.summary,
     this.suspensions = const [],
+    this.updatedAt,
   });
   factory Member.fromJson(Json j) => Member(
         id: j['id'] as int,
@@ -108,6 +111,7 @@ class Member {
         monthlyCategory: CategoryRef.fromJson(j['monthlyCategory'] as Json),
         summary: j['summary'] == null ? null : MemberSummary.fromJson(j['summary'] as Json),
         suspensions: [for (final s in (j['suspensions'] as List?) ?? const []) Suspension.fromJson(s as Json)],
+        updatedAt: j['updatedAt'] as String?,
       );
   final int id;
   final String firstName;
@@ -122,6 +126,9 @@ class Member {
   final CategoryRef monthlyCategory;
   final MemberSummary? summary;
   final List<Suspension> suspensions;
+
+  /// Versione letta, per non sovrascrivere modifiche fatte da altri.
+  final String? updatedAt;
 
   bool get active => status == 'attivo';
   String get fullName => '$lastName $firstName';
@@ -268,7 +275,7 @@ class PaymentMethod {
 }
 
 class Fee {
-  Fee({required this.categoryId, required this.kind, required this.name, this.months, required this.active, required this.year, this.amountCents});
+  Fee({required this.categoryId, required this.kind, required this.name, this.months, required this.active, required this.year, this.amountCents, this.updatedAt});
   factory Fee.fromJson(Json j) => Fee(
         categoryId: j['categoryId'] as int,
         kind: j['kind'] as String,
@@ -277,6 +284,7 @@ class Fee {
         active: j['active'] as bool,
         year: j['year'] as int,
         amountCents: j['amountCents'] as int?,
+        updatedAt: j['updatedAt'] as String?,
       );
   final int categoryId;
   final String kind; // annuale | mensile | pacchetto
@@ -285,6 +293,10 @@ class Fee {
   final bool active;
   final int year;
   final int? amountCents;
+
+  /// Versione per il controllo delle modifiche: "none" se l'importo non era fissato.
+  final String? updatedAt;
+  String get version => updatedAt ?? 'none';
 
   String get title => switch (kind) {
         'annuale' => 'Associativa ${name.toLowerCase()}',
@@ -323,6 +335,7 @@ class Product {
     this.tracksStock = false,
     this.lowStockThreshold = 2,
     this.variants = const [],
+    this.updatedAt,
   });
   factory Product.fromJson(Json j) => Product(
         id: j['id'] as int,
@@ -333,6 +346,7 @@ class Product {
         tracksStock: (j['tracksStock'] as bool?) ?? false,
         lowStockThreshold: (j['lowStockThreshold'] as int?) ?? 2,
         variants: [for (final v in (j['variants'] as List?) ?? const []) ProductVariant.fromJson(v as Json)],
+        updatedAt: j['updatedAt'] as String?,
       );
   final int id;
   final String name;
@@ -342,6 +356,7 @@ class Product {
   final bool tracksStock;
   final int lowStockThreshold;
   final List<ProductVariant> variants;
+  final String? updatedAt;
 
   int get totalStock => variants.where((v) => v.active).fold(0, (s, v) => s + v.stock);
   bool get hasLowStock => variants.any((v) => v.low);
@@ -515,7 +530,7 @@ class NewMonthItem extends PayItem {
 }
 
 class StockMovement {
-  StockMovement({required this.id, required this.variantLabel, required this.kind, required this.quantity, required this.movedOn, this.note, required this.userName});
+  StockMovement({required this.id, required this.variantLabel, required this.kind, required this.quantity, required this.movedOn, this.note, required this.userName, this.soldTo});
   factory StockMovement.fromJson(Json j) => StockMovement(
         id: j['id'] as int,
         variantLabel: j['variantLabel'] as String,
@@ -524,6 +539,7 @@ class StockMovement {
         movedOn: j['movedOn'] as String,
         note: j['note'] as String?,
         userName: j['userName'] as String,
+        soldTo: j['soldTo'] as String?,
       );
   final int id;
   final String variantLabel;
@@ -532,6 +548,9 @@ class StockMovement {
   final String movedOn;
   final String? note;
   final String userName;
+
+  /// Per vendite e resi: nome del socio oppure "Non socio".
+  final String? soldTo;
 }
 
 class StockItem {

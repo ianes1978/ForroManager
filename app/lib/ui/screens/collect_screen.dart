@@ -319,6 +319,10 @@ class _ConfirmState extends ConsumerState<_Confirm> {
     }
     setState(() => _busy = true);
     final pkg = _usePackage ? _package : null;
+    final note = _note.text.trim().isEmpty ? null : _note.text.trim();
+    // Stessa operazione = stessa chiave: un nuovo tentativo dopo un errore di rete non la registra due volte.
+    final keys = ref.read(operationKeysProvider);
+    final signature = 'pagamento|${widget.memberId}|${widget.choices.map((c) => c.key).join(',')}|$cents|$_method|$_paidOn|${pkg?.categoryId}|$note';
     final ok = await runAction(
       context,
       () => ref.read(repositoryProvider).createPayment(
@@ -327,14 +331,16 @@ class _ConfirmState extends ConsumerState<_Confirm> {
             method: _method,
             paidOn: _paidOn,
             items: [for (final c in widget.choices) c.item],
-            note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+            note: note,
             packageCategoryId: pkg?.categoryId,
+            idempotencyKey: keys.keyFor(signature),
           ),
       success: 'Pagamento di ${euro(cents)} registrato.',
     );
     if (!mounted) return;
     setState(() => _busy = false);
     if (ok) {
+      keys.done(signature);
       invalidateData(ref);
       context.pop();
     }

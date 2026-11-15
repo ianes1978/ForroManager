@@ -144,7 +144,11 @@ class _OpenSalesSection extends ConsumerWidget {
     if (choice == null || !context.mounted) return;
     var ok = false;
     if (choice.startsWith('pay:')) {
-      ok = await runAction(context, () => repo.paySale(sale.id, choice.substring(4)), success: 'Incassati ${euro(sale.remainingCents)}.');
+      final keys = ref.read(operationKeysProvider);
+      final signature = 'saldo|${sale.id}|${sale.remainingCents}|$choice';
+      ok = await runAction(context, () => repo.paySale(sale.id, choice.substring(4), idempotencyKey: keys.keyFor(signature)),
+          success: 'Incassati ${euro(sale.remainingCents)}.');
+      if (ok) keys.done(signature);
     } else {
       final reason = await askText(context, title: 'Annullare la vendita?', message: 'La merce torna in magazzino.', label: 'Motivo', confirm: 'Annulla vendita', destructive: true);
       if (reason != null && context.mounted) ok = await runAction(context, () => repo.cancelSale(sale.id, reason), success: 'Vendita annullata.');

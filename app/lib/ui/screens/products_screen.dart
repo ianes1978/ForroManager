@@ -199,7 +199,8 @@ class ProductDetailScreen extends ConsumerWidget {
                           priceCents: parseEuro(price.text),
                           active: active,
                           tracksStock: tracks,
-                          lowStockThreshold: tracks ? int.parse(threshold.text) : null),
+                          lowStockThreshold: tracks ? int.parse(threshold.text) : null,
+                          version: p.updatedAt),
                       success: 'Modifiche salvate.',
                     );
                     if (ok && ctx.mounted) Navigator.pop(ctx, true);
@@ -328,7 +329,8 @@ class ProductDetailScreen extends ConsumerWidget {
                   for (final m in list)
                     ListTile(
                       dense: true,
-                      title: Text('${switch (m.kind) { 'carico' => 'Carico', 'vendita' => 'Vendita', 'reso' => 'Reso', _ => 'Rettifica' }} · ${m.variantLabel}'),
+                      title: Text('${switch (m.kind) { 'carico' => 'Carico', 'vendita' => 'Vendita', 'reso' => 'Reso', _ => 'Rettifica' }} · ${m.variantLabel}'
+                          '${m.soldTo != null ? (m.kind == 'reso' ? ' · da ${m.soldTo}' : ' · a ${m.soldTo}') : ''}'),
                       subtitle: Text('${dateShort(m.movedOn)} · ${m.userName}${m.note != null ? ' · ${m.note}' : ''}'),
                       trailing: Text(m.quantity > 0 ? '+${m.quantity}' : '${m.quantity}', style: Theme.of(context).textTheme.titleMedium),
                     ),

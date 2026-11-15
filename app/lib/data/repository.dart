@@ -24,8 +24,8 @@ class Repository {
   Future<List<AppUser>> users() async => _items(await api.get('/users'), AppUser.fromJson);
   Future<AppUser> createUser(String email, String name, String temporaryPassword) async => AppUser.fromJson(
       await api.post('/users', {'email': email, 'name': name, 'temporaryPassword': temporaryPassword}) as Json);
-  Future<AppUser> updateUser(int id, {String? name, String? email, bool? active}) async => AppUser.fromJson(await api.patch(
-      '/users/$id', {'name': ?name, 'email': ?email, 'active': ?active}) as Json);
+  Future<AppUser> updateUser(int id, {String? name, String? email, bool? active, String? version}) async => AppUser.fromJson(await api.patch(
+      '/users/$id', {'name': ?name, 'email': ?email, 'active': ?active}, version: version) as Json);
   Future<void> resetPassword(int id, String temporaryPassword) =>
       api.post('/users/$id/password', {'temporaryPassword': temporaryPassword});
   Future<void> revokeSessions(int id) => api.post('/users/$id/revoke-sessions');
@@ -35,7 +35,8 @@ class Repository {
       _items(await api.get('/members', query: {'q': q, 'status': status, 'filter': filter}), Member.fromJson);
   Future<Member> member(int id) async => Member.fromJson(await api.get('/members/$id') as Json);
   Future<Member> createMember(Json data) async => Member.fromJson(await api.post('/members', data) as Json);
-  Future<Member> updateMember(int id, Json data) async => Member.fromJson(await api.patch('/members/$id', data) as Json);
+  Future<Member> updateMember(int id, Json data, {String? version}) async =>
+      Member.fromJson(await api.patch('/members/$id', data, version: version) as Json);
   Future<Member> ceaseMember(int id, String ceasedOn) async =>
       Member.fromJson(await api.post('/members/$id/cease', {'ceasedOn': ceasedOn}) as Json);
   Future<Member> reactivateMember(int id) async => Member.fromJson(await api.post('/members/$id/reactivate') as Json);
@@ -53,21 +54,22 @@ class Repository {
       Due.fromJson(await api.post('/dues/$id/adjust', {'amountCents': amountCents, 'reason': ?reason}) as Json);
   Future<void> cancelDue(int id, String reason) => api.post('/dues/$id/cancel', {'reason': reason});
   /// Addebita un prodotto a un socio. Restituisce la quota e la scorta rimasta (null se senza scorte).
-  Future<(Due, int?)> chargeProduct(int memberId, int productId, {int? variantId, int quantity = 1, int? amountCents, String? reason}) async {
+  Future<(Due, int?)> chargeProduct(int memberId, int productId,
+      {int? variantId, int quantity = 1, int? amountCents, String? reason, String? idempotencyKey}) async {
     final res = await api.post('/members/$memberId/charges', {
       'productId': productId,
       'variantId': ?variantId,
       'quantity': quantity,
       'amountCents': ?amountCents,
       'reason': ?reason,
-    }) as Json;
+    }, idempotencyKey) as Json;
     return (Due.fromJson(res), res['stockAfter'] as int?);
   }
 
   // Tariffe ------------------------------------------------------------------
   Future<List<Fee>> fees(int year) async => _items(await api.get('/fees', query: {'year': year}), Fee.fromJson);
-  Future<int> setFee(int year, int categoryId, int amountCents, {bool applyToUnpaid = false}) async {
-    final res = await api.put('/fees/$year/$categoryId', {'amountCents': amountCents, 'applyToUnpaid': applyToUnpaid}) as Json;
+  Future<int> setFee(int year, int categoryId, int amountCents, {bool applyToUnpaid = false, String? version}) async {
+    final res = await api.put('/fees/$year/$categoryId', {'amountCents': amountCents, 'applyToUnpaid': applyToUnpaid}, version: version) as Json;
     return res['updatedDues'] as int;
   }
 
@@ -89,7 +91,8 @@ class Repository {
         'lowStockThreshold': ?lowStockThreshold,
         'variants': [for (final (size, color) in variants) {'size': size, 'color': color}],
       }) as Json);
-  Future<Product> updateProduct(int id, {String? name, String? type, int? priceCents, bool? active, bool? tracksStock, int? lowStockThreshold}) async =>
+  Future<Product> updateProduct(int id,
+          {String? name, String? type, int? priceCents, bool? active, bool? tracksStock, int? lowStockThreshold, String? version}) async =>
       Product.fromJson(await api.patch('/products/$id', {
         'name': ?name,
         'type': ?type,
@@ -97,7 +100,7 @@ class Repository {
         'active': ?active,
         'tracksStock': ?tracksStock,
         'lowStockThreshold': ?lowStockThreshold,
-      }) as Json);
+      }, version: version) as Json);
   Future<Product> addVariant(int productId, String size, String color) async =>
       Product.fromJson(await api.post('/products/$productId/variants', {'size': size, 'color': color}) as Json);
   Future<Product> setVariantActive(int variantId, bool active) async =>
@@ -121,6 +124,7 @@ class Repository {
     String? reason,
     String? buyerName,
     String? payNowMethod,
+    String? idempotencyKey,
   }) async {
     final res = await api.post('/sales', {
       'productId': productId,
@@ -130,13 +134,13 @@ class Repository {
       'reason': ?reason,
       'buyerName': ?buyerName,
       if (payNowMethod != null) 'payment': {'method': payNowMethod},
-    }) as Json;
+    }, idempotencyKey) as Json;
     return (Due.fromJson(res), res['stockAfter'] as int?);
   }
 
   Future<List<Due>> openSales() async => _items(await api.get('/sales', query: {'status': 'aperte'}), Due.fromJson);
-  Future<void> paySale(int saleId, String method, {int? amountCents}) =>
-      api.post('/sales/$saleId/pay', {'method': method, 'amountCents': ?amountCents});
+  Future<void> paySale(int saleId, String method, {int? amountCents, String? idempotencyKey}) =>
+      api.post('/sales/$saleId/pay', {'method': method, 'amountCents': ?amountCents}, idempotencyKey);
   Future<void> cancelSale(int saleId, String reason) => api.post('/sales/$saleId/cancel', {'reason': reason});
 
   // Pagamenti ----------------------------------------------------------------
@@ -151,6 +155,7 @@ class Repository {
     required List<PayItem> items,
     String? note,
     int? packageCategoryId,
+    String? idempotencyKey,
   }) async =>
       Payment.fromJson(await api.post('/payments', {
         'memberId': memberId,
@@ -160,7 +165,7 @@ class Repository {
         'items': [for (final i in items) i.toJson()],
         'note': ?note,
         'packageCategoryId': ?packageCategoryId,
-      }) as Json);
+      }, idempotencyKey) as Json);
   Future<Payment> voidPayment(int id, String reason) async =>
       Payment.fromJson(await api.post('/payments/$id/void', {'reason': reason}) as Json);
   Future<List<PaymentMethod>> paymentMethods() async => _items(await api.get('/payment-methods'), PaymentMethod.fromJson);
@@ -189,6 +194,7 @@ class Repository {
   Future<IncomeReport> incomeReport(int year) async =>
       IncomeReport.fromJson(await api.get('/reports/income', query: {'year': year}) as Json);
   Future<List<int>> exportMembersCsv() => api.download('/export/members.csv');
+  Future<List<int>> exportStockCsv({String? from, String? to}) => api.download('/export/stock.csv', query: {'from': from, 'to': to});
   Future<List<int>> exportPaymentsCsv({String? from, String? to}) =>
       api.download('/export/payments.csv', query: {'from': from, 'to': to});
   Future<List<AuditEntry>> audit({int? beforeId, int limit = 50}) async =>

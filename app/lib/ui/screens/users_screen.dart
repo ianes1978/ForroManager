@@ -74,19 +74,20 @@ class UsersScreen extends ConsumerWidget {
       ),
     );
     if (!context.mounted || choice == null) return;
-    var ok = false;
     switch (choice) {
       case 'reset':
         final pwd = await askText(context,
             title: 'Nuova password temporanea per ${u.name}', label: 'Password temporanea (almeno 12 caratteri)', confirm: 'Reimposta',
             message: 'Le sue sessioni verranno chiuse e dovrà cambiarla al prossimo accesso.');
-        if (pwd != null && context.mounted) ok = await runAction(context, () => repo.resetPassword(u.id, pwd), success: 'Password reimpostata.');
+        if (pwd != null && context.mounted) await runAction(context, () => repo.resetPassword(u.id, pwd), success: 'Password reimpostata.');
       case 'revoke':
-        ok = await runAction(context, () => repo.revokeSessions(u.id), success: 'Sessioni chiuse.');
+        await runAction(context, () => repo.revokeSessions(u.id), success: 'Sessioni chiuse.');
       case 'toggle':
-        ok = await runAction(context, () => repo.updateUser(u.id, active: !u.active), success: u.active ? 'Utente disattivato.' : 'Utente riattivato.');
+        await runAction(context, () => repo.updateUser(u.id, active: !u.active, version: u.updatedAt),
+            success: u.active ? 'Utente disattivato.' : 'Utente riattivato.');
     }
-    if (ok) invalidateData(ref);
+    // Anche in caso di errore (es. modificato da altri) si ricarica l'elenco.
+    invalidateData(ref);
   }
 
   @override

@@ -88,4 +88,27 @@ void main() {
     expect(find.text('Importo non valido (es. 25 o 25,50).'), findsOneWidget);
     expect(repo.lastPayment, isNull);
   });
+
+  testWidgets('dopo un errore di rete il nuovo tentativo usa la stessa chiave: niente doppioni', (tester) async {
+    final repo = repoWithDues()..failNextPaymentWithNetwork = true;
+    await pumpApp(tester, repo: repo);
+    await tester.tap(find.widgetWithText(FloatingActionButton, 'Incassa'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bellini Marco'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Mensile ottobre 2026'));
+    await tester.pump();
+    await tester.tap(find.textContaining('Continua'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Registra pagamento'));
+    await tester.pumpAndSettle();
+    expect(find.text('Nessuna connessione. Controlla la rete e riprova.'), findsOneWidget);
+    expect(repo.lastPayment, isNull);
+    await tester.tap(find.text('Registra pagamento'));
+    await tester.pumpAndSettle();
+    expect(repo.lastPayment, isNotNull);
+    expect(repo.paymentKeys, hasLength(2));
+    expect(repo.paymentKeys[0], isNotNull);
+    expect(repo.paymentKeys[1], repo.paymentKeys[0]);
+  });
 }

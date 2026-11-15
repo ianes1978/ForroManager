@@ -63,6 +63,14 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
           icon: const Icon(Icons.receipt_long_outlined),
           label: const Text('Esporta pagamenti'),
         ),
+        const SectionTitle('Magazzino'),
+        const Text('Carichi, vendite (con "a chi": socio o non socio), resi e rettifiche, con la scorta dopo ogni movimento. Usa lo stesso periodo dei pagamenti.'),
+        const SizedBox(height: 12),
+        FilledButton.tonalIcon(
+          onPressed: _busy ? null : () => _export(() => repo.exportStockCsv(from: from, to: to), 'magazzino_${from ?? 'inizio'}_${to ?? today()}.csv'),
+          icon: const Icon(Icons.inventory_2_outlined),
+          label: const Text('Esporta movimenti di magazzino'),
+        ),
       ]),
     );
   }

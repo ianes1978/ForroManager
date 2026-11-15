@@ -31,9 +31,15 @@ class ApiClient {
 
   Future<dynamic> get(String path, {Map<String, Object?>? query}) =>
       _send('GET', path, query: query);
-  Future<dynamic> post(String path, [Object? body]) => _send('POST', path, body: body ?? const {});
-  Future<dynamic> put(String path, Object body) => _send('PUT', path, body: body);
-  Future<dynamic> patch(String path, Object body) => _send('PATCH', path, body: body);
+  /// [idempotencyKey]: per le operazioni che registrano soldi o merce, così un
+  /// nuovo tentativo dopo un errore di rete non le registra due volte.
+  Future<dynamic> post(String path, [Object? body, String? idempotencyKey]) =>
+      _send('POST', path, body: body ?? const {}, headers: {'Idempotency-Key': ?idempotencyKey});
+
+  /// [version]: la versione (updatedAt) letta; se nel frattempo un altro ha
+  /// salvato, il server risponde con un errore invece di sovrascrivere.
+  Future<dynamic> put(String path, Object body, {String? version}) => _send('PUT', path, body: body, headers: {'If-Match': ?version});
+  Future<dynamic> patch(String path, Object body, {String? version}) => _send('PATCH', path, body: body, headers: {'If-Match': ?version});
 
   /// Scarica un file (es. CSV) come byte.
   Future<List<int>> download(String path, {Map<String, Object?>? query}) async {
@@ -41,8 +47,8 @@ class ApiClient {
     return res.bodyBytes;
   }
 
-  Future<dynamic> _send(String method, String path, {Map<String, Object?>? query, Object? body}) async {
-    final res = await _raw(method, path, query: query, body: body);
+  Future<dynamic> _send(String method, String path, {Map<String, Object?>? query, Object? body, Map<String, String> headers = const {}}) async {
+    final res = await _raw(method, path, query: query, body: body, headers: headers);
     if (res.statusCode == 204 || res.body.isEmpty) return null;
     try {
       return jsonDecode(utf8.decode(res.bodyBytes));
@@ -51,9 +57,11 @@ class ApiClient {
     }
   }
 
-  Future<http.Response> _raw(String method, String path, {Map<String, Object?>? query, Object? body}) async {
+  Future<http.Response> _raw(String method, String path,
+      {Map<String, Object?>? query, Object? body, Map<String, String> headers = const {}}) async {
     final token = await store.read();
     final request = http.Request(method, _uri(path, query));
+    request.headers.addAll(headers);
     if (token != null) request.headers['Authorization'] = 'Bearer $token';
     if (body != null) {
       request.headers['Content-Type'] = 'application/json';
