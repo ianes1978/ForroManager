@@ -532,6 +532,21 @@
           },
           "userName": {
             "type": "string"
+          },
+          "soldTo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Per vendite e resi: nome del socio oppure \"Non socio\"",
+            "example": "Non socio"
+          },
+          "saleId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Vendita collegata (quota del prodotto)"
           }
         },
         "required": [
@@ -541,7 +556,9 @@
           "quantity",
           "movedOn",
           "note",
-          "userName"
+          "userName",
+          "soldTo",
+          "saleId"
         ]
       },
       "Due": {
@@ -6511,6 +6528,83 @@
             },
             "required": false,
             "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File CSV",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/export/stock.csv": {
+      "get": {
+        "tags": [
+          "Esportazione"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "summary": "Movimenti di magazzino in CSV (carichi, vendite con destinatario, resi, rettifiche)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "example": "2026-11-15"
+            },
+            "required": false,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "example": "2026-11-15"
+            },
+            "required": false,
+            "name": "to",
             "in": "query"
           }
         ],

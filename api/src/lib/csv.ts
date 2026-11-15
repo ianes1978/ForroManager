@@ -5,6 +5,8 @@
  */
 export function csvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
+  // I numeri veri (es. quantità negative) non sono formule: restano come sono.
+  if (typeof value === "number") return String(value);
   let text = String(value);
   if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
   if (/[";\n\r]/.test(text)) text = `"${text.replace(/"/g, '""')}"`;

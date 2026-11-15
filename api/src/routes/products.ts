@@ -65,6 +65,9 @@ const toProduct = (r: ProductRow, variants: VariantRow[]) => ({
   variants: r.tracks_stock === 1 ? variants.filter((v) => v.product_id === r.id).map((v) => toVariant(v, r.low_stock_threshold)) : [],
 });
 
+/** A chi è andata la merce di un movimento (d = dues, mb = members). */
+export const SOLD_TO_SQL = `CASE WHEN m.due_id IS NULL THEN NULL WHEN d.member_id IS NULL THEN 'Non socio' ELSE mb.last_name || ' ' || mb.first_name END`;
+
 const VARIANT_SELECT = `SELECT v.id, v.product_id, v.size, v.color, v.active, ${STOCK_SQL} AS stock FROM product_variants v`;
 
 async function productWithVariants(db: D1Database, id: number) {
@@ -160,6 +163,8 @@ const MovementSchema = z
     movedOn: z.string(),
     note: z.string().nullable(),
     userName: z.string(),
+    soldTo: z.string().nullable().openapi({ description: "Per vendite e resi: nome del socio oppure \"Non socio\"", example: "Non socio" }),
+    saleId: z.number().int().nullable().openapi({ description: "Vendita collegata (quota del prodotto)" }),
   })
   .openapi("StockMovement");
 
@@ -311,16 +316,19 @@ productRoutes
     await findProduct(db, id);
     const { results } = await db
       .prepare(
-        `SELECT m.id, v.size, v.color, m.kind, m.quantity, m.moved_on, m.note, u.name AS user_name
+        `SELECT m.id, v.size, v.color, m.kind, m.quantity, m.moved_on, m.note, u.name AS user_name, m.due_id,
+                ${SOLD_TO_SQL} AS sold_to
            FROM stock_movements m JOIN product_variants v ON v.id = m.variant_id JOIN users u ON u.id = m.created_by
+           LEFT JOIN dues d ON d.id = m.due_id LEFT JOIN members mb ON mb.id = d.member_id
           WHERE v.product_id = ?1 ORDER BY m.id DESC LIMIT 200`,
       )
       .bind(id)
-      .all<{ id: number; size: string; color: string; kind: "carico" | "vendita" | "reso" | "rettifica"; quantity: number; moved_on: string; note: string | null; user_name: string }>();
+      .all<{ id: number; size: string; color: string; kind: "carico" | "vendita" | "reso" | "rettifica"; quantity: number; moved_on: string; note: string | null; user_name: string; due_id: number | null; sold_to: string | null }>();
     return c.json(
       {
         items: results.map((m) => ({
           id: m.id, variantLabel: variantLabel(m.size, m.color) ?? "Unica", kind: m.kind, quantity: m.quantity, movedOn: m.moved_on, note: m.note, userName: m.user_name,
+          soldTo: m.sold_to, saleId: m.due_id,
         })),
       },
       200,

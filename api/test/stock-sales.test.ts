@@ -168,3 +168,35 @@ describe("vendite a non soci", () => {
     expect(status.nonMemberOpenCents).toBeGreaterThan(0);
   });
 });
+
+describe("tracciabilità del magazzino", () => {
+  it("i movimenti dicono a chi è andata la merce, anche dopo che il nome del non socio è stato cancellato", async () => {
+    const p = await tshirt();
+    const v = p.variants[0]!;
+    await stock(v.id, "carico", 5);
+    const memberId = ((await (await api("/members", { token, body: { firstName: "Giulia", lastName: "Ferri", joinedOn: "2026-01-01" } })).json()) as { id: number }).id;
+    await api(`/members/${memberId}/charges`, { token, body: { productId: p.id, variantId: v.id } });
+    const sale = (await (await api("/sales", { token, body: { productId: p.id, variantId: v.id, buyerName: "Mario" } })).json()) as Sale;
+    await api(`/sales/${sale.id}/pay`, { token, body: { method: "contanti" } });
+
+    const moves = (await (await api(`/products/${p.id}/movements`, { token })).json()) as { items: { kind: string; soldTo: string | null; saleId: number | null }[] };
+    expect(moves.items.map((m) => [m.kind, m.soldTo])).toEqual([
+      ["vendita", "Non socio"],
+      ["vendita", "Ferri Giulia"],
+      ["carico", null],
+    ]);
+    expect(moves.items[0]!.saleId).toBe(sale.id);
+  });
+
+  it("esporta i movimenti in CSV con destinatario e scorta progressiva", async () => {
+    const p = await tshirt();
+    const v = p.variants[1]!;
+    await stock(v.id, "carico", 4);
+    await api("/sales", { token, body: { productId: p.id, variantId: v.id, quantity: 3, payment: { method: "contanti" } } });
+    const text = new TextDecoder().decode(await (await api("/export/stock.csv", { token })).arrayBuffer());
+    const lines = text.trim().split("\r\n").filter((l) => l.includes(";L;nero;"));
+    expect(lines.at(-2)).toMatch(/;Carico;4;4;;/);
+    expect(lines.at(-1)).toMatch(/;Vendita;-3;1;Non socio;\d+;/);
+    expect(text).toContain("Data;Prodotto;Taglia;Colore;Movimento;Quantità;Scorta dopo;A chi;Vendita n.;Nota;Registrato da");
+  });
+});

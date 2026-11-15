@@ -6,6 +6,7 @@ import { DateSchema, bearer, commonErrors, createRouter } from "../lib/http.ts";
 import { todayIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { describeAllocations } from "./payments.ts";
+import { SOLD_TO_SQL } from "./products.ts";
 
 const csvResponse = (description: string) => ({ description, content: { "text/csv": { schema: z.string() } } });
 
@@ -31,6 +32,13 @@ function csv(body: string, filename: string): Response {
     },
   });
 }
+
+const stockCsvRoute = createRoute({
+  method: "get", path: "/export/stock.csv", tags: ["Esportazione"], security: bearer,
+  summary: "Movimenti di magazzino in CSV (carichi, vendite con destinatario, resi, rettifiche)",
+  request: { query: z.object({ from: DateSchema.optional(), to: DateSchema.optional() }) },
+  responses: { 200: csvResponse("File CSV"), ...commonErrors },
+});
 
 export const exportRoutes = createRouter();
 exportRoutes.use("/export/*", requireAuth);
@@ -59,6 +67,27 @@ exportRoutes
       }),
     );
     return csv(body, `soci_${today}.csv`) as never;
+  })
+  .openapi(stockCsvRoute, async (c) => {
+    const { from, to } = c.req.valid("query");
+    const { results } = await c.env.DB.prepare(
+      `SELECT m.moved_on, p.name AS product, v.size, v.color, m.kind, m.quantity, ${SOLD_TO_SQL} AS sold_to,
+              m.due_id, m.note, u.name AS user_name,
+              (SELECT SUM(m2.quantity) FROM stock_movements m2 WHERE m2.variant_id = m.variant_id AND m2.id <= m.id) AS stock_after
+         FROM stock_movements m JOIN product_variants v ON v.id = m.variant_id JOIN products p ON p.id = v.product_id
+         JOIN users u ON u.id = m.created_by
+         LEFT JOIN dues d ON d.id = m.due_id LEFT JOIN members mb ON mb.id = d.member_id
+        WHERE m.moved_on BETWEEN ?1 AND ?2
+        ORDER BY m.moved_on, m.id`,
+    )
+      .bind(from ?? "0000-01-01", to ?? "9999-12-31")
+      .all<Record<string, string | number | null>>();
+    const kinds: Record<string, string> = { carico: "Carico", vendita: "Vendita", reso: "Reso", rettifica: "Rettifica" };
+    const body = toCsv(
+      ["Data", "Prodotto", "Taglia", "Colore", "Movimento", "Quantità", "Scorta dopo", "A chi", "Vendita n.", "Nota", "Registrato da"],
+      results.map((r) => [r.moved_on, r.product, r.size, r.color, kinds[r.kind as string], r.quantity, r.stock_after, r.sold_to, r.due_id, r.note, r.user_name]),
+    );
+    return csv(body, `magazzino_${from ?? "inizio"}_${to ?? todayIso()}.csv`) as never;
   })
   .openapi(paymentsCsvRoute, async (c) => {
     const { from, to } = c.req.valid("query");
