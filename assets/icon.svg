@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="ForroManager">
-  <rect width="100" height="100" rx="22" fill="#241A4D"/>
-  <polyline points="29,63 50,22 80,76 38,76" fill="none" stroke="#FFC23D" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-  <polyline points="42,56 50,64 64,47" fill="none" stroke="#FF6B5E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="100" height="100" rx="22" fill="#12705A"/>
+  <polyline points="29,63 50,22 80,76 38,76" fill="none" stroke="#FFF7E6" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <polyline points="42,56 50,64 64,47" fill="none" stroke="#FFC23D" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
