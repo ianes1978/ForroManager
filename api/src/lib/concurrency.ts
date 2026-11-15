@@ -30,7 +30,7 @@ export async function assertNotModified(
   const who = last?.name ?? "Qualcun altro";
   const minutes = last ? (Date.now() - Date.parse(last.at)) / 60000 : Infinity;
   const when = minutes < 60 ? "poco fa" : "dopo che li hai aperti";
-  throw new ApiError(409, "stale", `${who} ha modificato questi dati ${when}: ricarica e riprova.`, {
+  throw new ApiError(409, "stale", `${who} ha modificato questi dati ${when}: controlla i dati aggiornati e salva di nuovo.`, {
     modifiedBy: last?.name ?? null,
     modifiedAt: last?.at ?? current,
   });

@@ -36,13 +36,13 @@ void main() {
 
   test('una modifica sovrapposta diventa un errore chiaro con il codice stale', () async {
     final api = client(409, {
-      'error': {'code': 'stale', 'message': 'Franco ha modificato questi dati poco fa: ricarica e riprova.'},
+      'error': {'code': 'stale', 'message': 'Franco ha modificato questi dati poco fa: controlla i dati aggiornati e salva di nuovo.'},
     });
     expect(
       () => api.patch('/members/1', {'notes': 'x'}, version: 'v1'),
       throwsA(isA<ApiException>()
           .having((e) => e.code, 'code', 'stale')
-          .having((e) => e.message, 'message', 'Franco ha modificato questi dati poco fa: ricarica e riprova.')),
+          .having((e) => e.message, 'message', 'Franco ha modificato questi dati poco fa: controlla i dati aggiornati e salva di nuovo.')),
     );
   });
 

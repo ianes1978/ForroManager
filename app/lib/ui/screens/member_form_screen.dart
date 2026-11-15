@@ -81,12 +81,19 @@ class _MemberFormScreenState extends ConsumerState<MemberFormScreen> {
       }
     } on ApiException catch (e) {
       if (e.code == 'stale') {
-        // Un altro ha salvato nel frattempo: si ricaricano i dati aggiornati.
-        _loaded = false;
-        ref.invalidate(memberProvider(widget.memberId!));
+        // Un altro ha salvato nel frattempo: si mostrano i suoi dati aggiornati
+        // (con la nuova versione), così si può rivedere e salvare di nuovo.
+        try {
+          final fresh = await ref.refresh(memberProvider(widget.memberId!).future);
+          _loaded = false;
+          _fill(fresh);
+        } on Object {
+          // Se il ricaricamento fallisce resta il messaggio: l'utente può riaprire la scheda.
+        }
       }
+      if (!mounted) return;
       setState(() => _fieldErrors = e.fields);
-      if (mounted) showMessage(context, e.message);
+      showMessage(context, e.message);
     } on Object catch (e) {
       if (mounted) showMessage(context, errorMessage(e));
     } finally {

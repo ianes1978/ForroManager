@@ -32,7 +32,7 @@ describe("modifiche in contemporanea", () => {
     expect(second.status).toBe(409);
     const err = (await second.json()) as { error: { code: string; message: string } };
     expect(err.error.code).toBe("stale");
-    expect(err.error.message).toBe("Franco ha modificato questi dati poco fa: ricarica e riprova.");
+    expect(err.error.message).toBe("Franco ha modificato questi dati poco fa: controlla i dati aggiornati e salva di nuovo.");
     // Con la versione aggiornata il salvataggio passa.
     const fresh = (await first.json()) as { updatedAt: string };
     expect((await send("PATCH", `/members/${m.id}`, roberta.token, { notes: "Altro" }, fresh.updatedAt)).status).toBe(200);

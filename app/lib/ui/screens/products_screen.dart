@@ -330,7 +330,7 @@ class ProductDetailScreen extends ConsumerWidget {
                     ListTile(
                       dense: true,
                       title: Text('${switch (m.kind) { 'carico' => 'Carico', 'vendita' => 'Vendita', 'reso' => 'Reso', _ => 'Rettifica' }} · ${m.variantLabel}'
-                          '${m.soldTo != null ? (m.kind == 'reso' ? ' · da ${m.soldTo}' : ' · a ${m.soldTo}') : ''}'),
+                          '${m.soldTo == null ? '' : '${m.kind == 'reso' ? ' · da ' : ' · a '}${m.soldTo == 'Non socio' ? 'un non socio' : m.soldTo}'}'),
                       subtitle: Text('${dateShort(m.movedOn)} · ${m.userName}${m.note != null ? ' · ${m.note}' : ''}'),
                       trailing: Text(m.quantity > 0 ? '+${m.quantity}' : '${m.quantity}', style: Theme.of(context).textTheme.titleMedium),
                     ),
