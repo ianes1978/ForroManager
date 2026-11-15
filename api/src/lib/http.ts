@@ -62,3 +62,15 @@ export const IdParam = z.object({
     .positive()
     .openapi({ param: { name: "id", in: "path" }, example: 1 }),
 });
+
+/** Corpo o risposta JSON con lo schema indicato (abbreviazione per createRoute). */
+export const json = <T extends z.ZodType>(schema: T) => ({ content: { "application/json": { schema } } });
+
+export const DateSchema = z.iso.date("Data non valida (formato AAAA-MM-GG).").openapi({ example: "2026-11-15" });
+
+export const YearMonthSchema = z
+  .string()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Mese non valido (formato AAAA-MM).")
+  .openapi({ example: "2026-07" });
+
+export const YearSchema = z.coerce.number().int().min(2000).max(2100).openapi({ example: 2026 });

@@ -2,12 +2,12 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { auditStatement } from "../lib/audit.ts";
 import { hashPassword } from "../lib/crypto.ts";
 import { conflict, notFound } from "../lib/errors.ts";
-import { IdParam, bearer, commonErrors, createRouter, errors } from "../lib/http.ts";
+import { IdParam, bearer, commonErrors, createRouter, errors, json } from "../lib/http.ts";
 import { nowIso } from "../lib/time.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import { EmailSchema, NewPasswordSchema, USER_COLUMNS, UserSchema, type UserRow, toUser } from "../schemas/users.ts";
 
-const json = <T extends z.ZodType>(schema: T) => ({ content: { "application/json": { schema } } });
+
 
 const listRoute = createRoute({
   method: "get",
