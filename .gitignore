@@ -78,3 +78,4 @@ build/
 # Build web di Flutter copiata nel Worker (generata, non versionata)
 api/public/*
 !api/public/.gitkeep
+.user.sql
