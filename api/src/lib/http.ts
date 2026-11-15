@@ -81,7 +81,7 @@ export const IdempotencyHeaders = z.object({
     .string()
     .optional()
     .openapi({
-      param: { name: "Idempotency-Key", in: "header" },
+      param: { name: "idempotency-key", in: "header" },
       description: "Valore casuale (16-100 caratteri) generato dal client per questa operazione e riusato nei tentativi successivi.",
       example: "3f9c2b7e8a1d4c6f9e0b2a5d7c8e1f40",
     }),
@@ -93,7 +93,7 @@ export const IfMatchHeaders = z.object({
     .string()
     .optional()
     .openapi({
-      param: { name: "If-Match", in: "header" },
+      param: { name: "if-match", in: "header" },
       description: 'Il valore updatedAt letto (o "none" se il dato non esisteva). Se nel frattempo è cambiato la risposta è 409 "stale".',
       example: "2026-11-15T10:42:00Z",
     }),
