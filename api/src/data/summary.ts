@@ -17,10 +17,10 @@ export const SUMMARY_CTE = `
   member_summary AS (
     SELECT member_id,
            SUM(CASE WHEN kind <> 'prodotto' AND remaining > 0
-                     AND ((kind = 'annuale' AND year <= ?1) OR (kind = 'mensile' AND year * 12 + month - 1 <= ?2))
+                     AND ((kind = 'annuale' AND year <= ?1) OR (kind IN ('mensile', 'periodo') AND year * 12 + month - 1 <= ?2))
                     THEN remaining ELSE 0 END) AS arrears_cents,
            SUM(CASE WHEN kind <> 'prodotto' AND remaining > 0
-                     AND ((kind = 'annuale' AND year <= ?1) OR (kind = 'mensile' AND year * 12 + month - 1 <= ?2))
+                     AND ((kind = 'annuale' AND year <= ?1) OR (kind IN ('mensile', 'periodo') AND year * 12 + month - 1 <= ?2))
                     THEN 1 ELSE 0 END) AS arrears_count,
            SUM(CASE WHEN kind = 'prodotto' AND remaining > 0 THEN remaining ELSE 0 END) AS open_charges_cents,
            SUM(CASE WHEN kind = 'prodotto' AND remaining > 0 THEN 1 ELSE 0 END) AS open_charges_count

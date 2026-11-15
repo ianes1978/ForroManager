@@ -1,5 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { type DueRow, VARIANT_LABEL_SQL, memberDues } from "../data/dues.ts";
+import { type DueRow, PERIOD_LABEL_SQL, VARIANT_LABEL_SQL, memberDues } from "../data/dues.ts";
 import { restockStatement } from "../data/sales.ts";
 import { allocate, compareForAllocation, dueLabel, type DueKind, splitCents } from "../domain/dues.ts";
 import { isSuspended, periodOf } from "../domain/periods.ts";
@@ -85,6 +85,7 @@ interface AllocationRow {
   product_name: string | null;
   variant_label: string | null;
   quantity: number;
+  period_label: string | null;
 }
 
 const PAYMENT_SELECT = `
@@ -98,22 +99,24 @@ const PAYMENT_SELECT = `
 
 const ALLOCATION_SELECT = `
   SELECT a.payment_id, a.due_id, a.amount_cents, d.kind, d.year, d.month, pr.name AS product_name,
-         ${VARIANT_LABEL_SQL} AS variant_label, d.quantity
+         ${VARIANT_LABEL_SQL} AS variant_label, d.quantity, ${PERIOD_LABEL_SQL} AS period_label
     FROM payment_allocations a
     JOIN dues d ON d.id = a.due_id
     LEFT JOIN products pr ON pr.id = d.product_id
-    LEFT JOIN product_variants v ON v.id = d.variant_id`;
+    LEFT JOIN product_variants v ON v.id = d.variant_id
+    LEFT JOIN course_periods cp ON cp.id = d.course_period_id
+    LEFT JOIN courses co ON co.id = cp.course_id`;
 
 const MESI_BREVI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
 const MESI = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
 
 /** Descrizione breve: "Mensile luglio 2026", "Mensili ott 2026–gen 2027", "Quota associativa 2026 + 2 mensili"... */
 export function describeAllocations(
-  allocs: (Pick<AllocationRow, "kind" | "year" | "month" | "product_name"> & Partial<Pick<AllocationRow, "variant_label" | "quantity">>)[],
+  allocs: (Pick<AllocationRow, "kind" | "year" | "month" | "product_name"> & Partial<Pick<AllocationRow, "variant_label" | "quantity" | "period_label">>)[],
 ): string {
   if (allocs.length === 1) {
     const a = allocs[0]!;
-    return dueLabel({ kind: a.kind, year: a.year, month: a.month, productName: a.product_name, variantLabel: a.variant_label, quantity: a.quantity });
+    return dueLabel({ kind: a.kind, year: a.year, month: a.month, productName: a.product_name, variantLabel: a.variant_label, quantity: a.quantity, periodLabel: a.period_label });
   }
   const months = allocs.filter((a) => a.kind === "mensile").sort((a, b) => periodOf(a.year, a.month!) - periodOf(b.year, b.month!));
   const parts: string[] = [];
@@ -123,6 +126,7 @@ export function describeAllocations(
     const f = months[0]!, l = months[months.length - 1]!;
     parts.push(f.year === l.year ? `Mensili ${MESI_BREVI[f.month! - 1]}–${MESI_BREVI[l.month! - 1]} ${l.year}` : `Mensili ${MESI_BREVI[f.month! - 1]} ${f.year}–${MESI_BREVI[l.month! - 1]} ${l.year}`);
   }
+  for (const a of allocs.filter((x) => x.kind === "periodo")) parts.push(a.period_label ?? "Periodo del corso");
   for (const a of allocs.filter((x) => x.kind === "prodotto")) {
     parts.push(dueLabel({ kind: "prodotto", year: a.year, month: null, productName: a.product_name, variantLabel: a.variant_label, quantity: a.quantity }));
   }
@@ -145,7 +149,9 @@ function toPayment(r: PaymentRow, allocs: AllocationRow[]): z.infer<typeof Payme
     voidReason: r.void_reason,
     allocations: allocs.map((a) => ({
       dueId: a.due_id,
-      label: dueLabel({ kind: a.kind, year: a.year, month: a.month, productName: a.product_name, variantLabel: a.variant_label, quantity: a.quantity }),
+      label: dueLabel({
+        kind: a.kind, year: a.year, month: a.month, productName: a.product_name, variantLabel: a.variant_label, quantity: a.quantity, periodLabel: a.period_label,
+      }),
       amountCents: a.amount_cents,
     })),
     description: describeAllocations(allocs),
@@ -365,7 +371,7 @@ paymentRoutes
           amountCents: due.amount_cents,
           paidCents: due.paid_cents,
           adjustmentReason: due.adjustment_reason,
-          label: dueLabel({ kind: due.kind, year: due.year, month: due.month, productName: due.product_name }),
+          label: dueLabel({ kind: due.kind, year: due.year, month: due.month, productName: due.product_name, periodLabel: due.period_label }),
         });
       } else {
         const key = `m${item.year}-${item.month}`;

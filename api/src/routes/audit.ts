@@ -30,6 +30,9 @@ const ENTITY_LABELS: Record<string, string> = {
   payment_method: "un metodo di pagamento",
   variant: "una variante di prodotto",
   stock: "le scorte di magazzino",
+  course: "un corso",
+  course_period: "un periodo di corso",
+  enrollment: "le iscrizioni a un periodo",
 };
 const ACTION_LABELS: Record<string, string> = {
   create: "ha creato",

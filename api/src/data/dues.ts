@@ -2,6 +2,9 @@ import { z } from "@hono/zod-openapi";
 import { type DueKind, dueLabel, dueStatus, remainingCents } from "../domain/dues.ts";
 
 /** Espressione SQL per l'etichetta della variante (v = product_variants), null se unica. */
+/** Etichetta di un periodo di corso (cp = course_periods, co = courses): "Forró gen–mar 2026". */
+export const PERIOD_LABEL_SQL = "(co.name || ' ' || cp.name)";
+
 export const VARIANT_LABEL_SQL = `NULLIF(TRIM(COALESCE(v.size, '') || CASE WHEN COALESCE(v.size, '') <> '' AND COALESCE(v.color, '') <> '' THEN ' · ' ELSE '' END || COALESCE(v.color, '')), '')`;
 import { notFound } from "../lib/errors.ts";
 
@@ -13,6 +16,8 @@ export interface DueRow {
   year: number;
   month: number | null;
   category_id: number | null;
+  course_period_id: number | null;
+  period_label: string | null;
   product_id: number | null;
   product_name: string | null;
   variant_id: number | null;
@@ -30,20 +35,23 @@ const PAID_SUBQUERY = `COALESCE((SELECT SUM(a.amount_cents) FROM payment_allocat
                                  WHERE a.due_id = d.id AND py.voided_at IS NULL), 0)`;
 
 export const DUE_SELECT = `
-  SELECT d.id, d.member_id, d.buyer_name, d.kind, d.year, d.month, d.category_id, d.product_id, p.name AS product_name,
+  SELECT d.id, d.member_id, d.buyer_name, d.kind, d.year, d.month, d.category_id, d.course_period_id,
+         ${PERIOD_LABEL_SQL} AS period_label, d.product_id, p.name AS product_name,
          d.variant_id, ${VARIANT_LABEL_SQL} AS variant_label, d.quantity,
          d.base_amount_cents, d.amount_cents, d.adjustment_reason, d.charged_on,
          ${PAID_SUBQUERY} AS paid_cents
-    FROM dues d LEFT JOIN products p ON p.id = d.product_id LEFT JOIN product_variants v ON v.id = d.variant_id`;
+    FROM dues d LEFT JOIN products p ON p.id = d.product_id LEFT JOIN product_variants v ON v.id = d.variant_id
+    LEFT JOIN course_periods cp ON cp.id = d.course_period_id LEFT JOIN courses co ON co.id = cp.course_id`;
 
 export const DueSchema = z
   .object({
     id: z.number().int(),
-    kind: z.enum(["annuale", "mensile", "prodotto"]),
+    kind: z.enum(["annuale", "mensile", "periodo", "prodotto"]),
     year: z.number().int(),
     month: z.number().int().nullable(),
     label: z.string().openapi({ example: "Mensile luglio 2026" }),
     categoryId: z.number().int().nullable(),
+    coursePeriodId: z.number().int().nullable().openapi({ description: "Per le iscrizioni a un periodo di corso" }),
     productId: z.number().int().nullable(),
     variantId: z.number().int().nullable(),
     variantLabel: z.string().nullable().openapi({ example: "M · nero" }),
@@ -68,8 +76,11 @@ export function toDue(r: DueRow, today: string): Due {
     kind: r.kind,
     year: r.year,
     month: r.month,
-    label: dueLabel({ kind: r.kind, year: r.year, month: r.month, productName: r.product_name, variantLabel: r.variant_label, quantity: r.quantity }),
+    label: dueLabel({
+      kind: r.kind, year: r.year, month: r.month, productName: r.product_name, variantLabel: r.variant_label, quantity: r.quantity, periodLabel: r.period_label,
+    }),
     categoryId: r.category_id,
+    coursePeriodId: r.course_period_id,
     productId: r.product_id,
     variantId: r.variant_id,
     variantLabel: r.variant_label,
@@ -90,7 +101,7 @@ export async function memberDues(db: D1Database, memberId: number): Promise<DueR
   const { results } = await db
     .prepare(
       `${DUE_SELECT} WHERE d.member_id = ?1 AND d.cancelled_at IS NULL
-        ORDER BY d.year, CASE d.kind WHEN 'annuale' THEN 0 WHEN 'mensile' THEN 1 ELSE 2 END, d.month, d.charged_on, d.id`,
+        ORDER BY d.year, CASE d.kind WHEN 'annuale' THEN 0 WHEN 'prodotto' THEN 2 ELSE 1 END, d.month, d.charged_on, d.id`,
     )
     .bind(memberId)
     .all<DueRow>();

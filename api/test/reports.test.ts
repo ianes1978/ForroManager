@@ -47,7 +47,7 @@ describe("riepilogo", () => {
     expect(r.byMonth[MONTH - 1]).toBe(5500);
     expect(r.byMethod.find((m) => m.code === "bonifico")!.cents).toBe(5500);
     expect(r.byMethod.find((m) => m.code === "paypal")!.cents).toBe(0);
-    expect(r.byKind).toEqual({ annuale: 3000, mensile: 2500, prodotto: 0 });
+    expect(r.byKind).toEqual({ annuale: 3000, mensile: 2500, periodo: 0, prodotto: 0 });
   });
 
   it("mostra nell'elenco soci il riepilogo e filtra chi ha arretrati", async () => {

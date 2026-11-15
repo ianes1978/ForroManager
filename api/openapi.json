@@ -572,6 +572,7 @@
             "enum": [
               "annuale",
               "mensile",
+              "periodo",
               "prodotto"
             ]
           },
@@ -593,6 +594,13 @@
               "integer",
               "null"
             ]
+          },
+          "coursePeriodId": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Per le iscrizioni a un periodo di corso"
           },
           "productId": {
             "type": [
@@ -661,6 +669,7 @@
           "month",
           "label",
           "categoryId",
+          "coursePeriodId",
           "productId",
           "variantId",
           "variantLabel",
@@ -741,6 +750,137 @@
               "stockAfter"
             ]
           }
+        ]
+      },
+      "Course": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "periods": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoursePeriod"
+            }
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "active",
+          "periods",
+          "updatedAt"
+        ]
+      },
+      "CoursePeriod": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "courseId": {
+            "type": "integer"
+          },
+          "courseName": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "example": "gen–mar 2026"
+          },
+          "label": {
+            "type": "string",
+            "example": "Forró gen–mar 2026"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "example": "2026-07"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "example": "2026-07"
+          },
+          "months": {
+            "type": "integer"
+          },
+          "amountCents": {
+            "type": "integer"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "enrolled": {
+            "type": "integer",
+            "description": "Soci iscritti"
+          },
+          "paid": {
+            "type": "integer",
+            "description": "Iscritti che hanno pagato per intero"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "courseId",
+          "courseName",
+          "name",
+          "label",
+          "from",
+          "to",
+          "months",
+          "amountCents",
+          "active",
+          "enrolled",
+          "paid",
+          "updatedAt"
+        ]
+      },
+      "Enrollment": {
+        "type": "object",
+        "properties": {
+          "dueId": {
+            "type": "integer"
+          },
+          "memberId": {
+            "type": "integer"
+          },
+          "memberName": {
+            "type": "string"
+          },
+          "amountCents": {
+            "type": "integer"
+          },
+          "paidCents": {
+            "type": "integer"
+          },
+          "adjustmentReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "dueId",
+          "memberId",
+          "memberName",
+          "amountCents",
+          "paidCents",
+          "adjustmentReason"
         ]
       },
       "Payment": {
@@ -1020,6 +1160,9 @@
               "mensile": {
                 "type": "integer"
               },
+              "periodo": {
+                "type": "integer"
+              },
               "prodotto": {
                 "type": "integer"
               }
@@ -1027,6 +1170,7 @@
             "required": [
               "annuale",
               "mensile",
+              "periodo",
               "prodotto"
             ]
           },
@@ -4458,6 +4602,765 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Charge"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses": {
+      "get": {
+        "tags": [
+          "Corsi"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "summary": "Corsi con i loro periodi (dell'anno indicato o tutti)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 2000,
+              "maximum": 2100,
+              "example": 2026,
+              "description": "Solo i periodi che toccano quest'anno"
+            },
+            "required": false,
+            "description": "Solo i periodi che toccano quest'anno",
+            "name": "year",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Corsi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Course"
+                      }
+                    }
+                  },
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Corsi"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "summary": "Nuovo corso",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Corso creato",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Course"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{id}": {
+      "patch": {
+        "tags": [
+          "Corsi"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "summary": "Rinomina o disattiva un corso",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "example": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "active": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Corso aggiornato",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Course"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{id}/periods": {
+      "post": {
+        "tags": [
+          "Corsi"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "summary": "Nuovo periodo del corso (un mese, un trimestre, un quadrimestre...) con il suo prezzo",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "example": 1
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                    "example": "2026-07"
+                  },
+                  "to": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                    "example": "2026-07"
+                  },
+                  "amountCents": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000000
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "description": "Predefinito: es. \"gen–mar 2026\""
+                  }
+                },
+                "required": [
+                  "from",
+                  "to",
+                  "amountCents"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Periodo creato",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoursePeriod"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/course-periods/{periodId}": {
+      "patch": {
+        "tags": [
+          "Corsi"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "summary": "Modifica nome, prezzo o stato di un periodo",
+        "description": "Con applyToUnpaid il nuovo prezzo vale anche per le iscrizioni senza pagamenti né riduzioni personali.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "periodId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Il valore updatedAt letto (o \"none\" se il dato non esisteva). Se nel frattempo è cambiato la risposta è 409 \"stale\".",
+              "example": "2026-11-15T10:42:00Z"
+            },
+            "required": false,
+            "description": "Il valore updatedAt letto (o \"none\" se il dato non esisteva). Se nel frattempo è cambiato la risposta è 409 \"stale\".",
+            "name": "if-match",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "amountCents": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000000
+                  },
+                  "active": {
+                    "type": "boolean"
+                  },
+                  "applyToUnpaid": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Periodo aggiornato",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "period": {
+                      "$ref": "#/components/schemas/CoursePeriod"
+                    },
+                    "updatedDues": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "period",
+                    "updatedDues"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflitto con lo stato attuale",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/course-periods/{periodId}/enrollments": {
+      "get": {
+        "tags": [
+          "Corsi"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "summary": "Iscritti al periodo",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "periodId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Iscritti",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "period": {
+                      "$ref": "#/components/schemas/CoursePeriod"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Enrollment"
+                      }
+                    }
+                  },
+                  "required": [
+                    "period",
+                    "items"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autenticato o sessione scaduta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operazione non consentita",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Risorsa non trovata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Dati non validi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/course-periods/{periodId}/enroll": {
+      "post": {
+        "tags": [
+          "Corsi"
+        ],
+        "security": [
+          {
+            "Bearer": []
+          }
+        ],
+        "summary": "Iscrive dei soci al periodo (crea le loro quote; chi è già iscritto viene saltato)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "required": true,
+            "name": "periodId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "memberIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0
+                        },
+                        "minItems": 1,
+                        "maxItems": 300
+                      }
+                    },
+                    "required": [
+                      "memberIds"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "renewFromPeriodId": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "description": "Iscrive i soci attivi iscritti a quest'altro periodo"
+                      }
+                    },
+                    "required": [
+                      "renewFromPeriodId"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Esito",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enrolled": {
+                      "type": "integer"
+                    },
+                    "alreadyEnrolled": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "enrolled",
+                    "alreadyEnrolled"
+                  ]
                 }
               }
             }

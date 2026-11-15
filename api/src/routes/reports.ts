@@ -57,7 +57,7 @@ const incomeRoute = createRoute({
             totalCents: z.number().int(),
             byMonth: z.array(z.number().int()).length(12).openapi({ description: "Gennaio..dicembre, per data di pagamento" }),
             byMethod: z.array(z.object({ code: z.string(), label: z.string(), cents: z.number().int() })),
-            byKind: z.object({ annuale: z.number().int(), mensile: z.number().int(), prodotto: z.number().int() }),
+            byKind: z.object({ annuale: z.number().int(), mensile: z.number().int(), periodo: z.number().int(), prodotto: z.number().int() }),
             bySource: z.object({ soci: z.number().int(), nonSoci: z.number().int() }).openapi({ description: "Incassi da soci e da vendite a non soci" }),
           })
           .openapi("IncomeReport"),
@@ -142,7 +142,7 @@ reportRoutes
     const source = (bySource!.results as { soci: number; non_soci: number }[])[0] ?? { soci: 0, non_soci: 0 };
     const months = Array.from({ length: 12 }, () => 0);
     for (const r of byMonth!.results as { month: number; cents: number }[]) months[r.month - 1] = r.cents;
-    const kinds = { annuale: 0, mensile: 0, prodotto: 0 };
+    const kinds = { annuale: 0, mensile: 0, periodo: 0, prodotto: 0 };
     for (const r of byKind!.results as { kind: keyof typeof kinds; cents: number }[]) kinds[r.kind] = r.cents;
     return c.json(
       {

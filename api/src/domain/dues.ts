@@ -1,6 +1,6 @@
 import { periodOf } from "./periods.ts";
 
-export type DueKind = "annuale" | "mensile" | "prodotto";
+export type DueKind = "annuale" | "mensile" | "periodo" | "prodotto";
 export type DueStatus = "pagata" | "parziale" | "da_pagare" | "futura";
 
 export interface DueLike {
@@ -29,6 +29,7 @@ export function isDueStarted(due: Pick<DueLike, "kind" | "year" | "month">, toda
   const month = Number(today.slice(5, 7));
   if (due.kind === "prodotto") return true;
   if (due.kind === "annuale") return due.year <= year;
+  // Mensile o periodo di corso: conta il mese di inizio.
   return periodOf(due.year, due.month!) <= periodOf(year, month);
 }
 
@@ -67,7 +68,7 @@ export function compareForAllocation(
   a: { kind: DueKind; year: number; month: number | null; chargedOn: string; id: number },
   b: { kind: DueKind; year: number; month: number | null; chargedOn: string; id: number },
 ): number {
-  const rank = (d: { kind: DueKind }) => (d.kind === "annuale" ? 0 : d.kind === "mensile" ? 1 : 2);
+  const rank = (d: { kind: DueKind }) => (d.kind === "annuale" ? 0 : d.kind === "prodotto" ? 2 : 1);
   if (rank(a) !== rank(b)) return rank(a) - rank(b);
   if (a.year !== b.year) return a.year - b.year;
   if ((a.month ?? 0) !== (b.month ?? 0)) return (a.month ?? 0) - (b.month ?? 0);
@@ -109,7 +110,9 @@ export function dueLabel(d: {
   productName?: string | null;
   variantLabel?: string | null;
   quantity?: number;
+  periodLabel?: string | null;
 }): string {
+  if (d.kind === "periodo") return d.periodLabel ?? "Periodo del corso";
   if (d.kind === "prodotto") {
     const variant = d.variantLabel ? ` (${d.variantLabel})` : "";
     const qty = (d.quantity ?? 1) > 1 ? ` ×${d.quantity}` : "";
@@ -123,4 +126,13 @@ export function dueLabel(d: {
 export function variantLabel(size: string, color: string): string | null {
   const text = [size, color].filter((x) => x.trim() !== "").join(" · ");
   return text === "" ? null : text;
+}
+
+const MESI_BREVI = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
+
+/** Nome predefinito di un periodo: "ottobre 2026", "gen–mar 2026", "set 2026–gen 2027". */
+export function defaultPeriodName(fromYear: number, fromMonth: number, toYear: number, toMonth: number): string {
+  if (fromYear === toYear && fromMonth === toMonth) return `${MESI[fromMonth - 1]} ${fromYear}`;
+  if (fromYear === toYear) return `${MESI_BREVI[fromMonth - 1]}–${MESI_BREVI[toMonth - 1]} ${toYear}`;
+  return `${MESI_BREVI[fromMonth - 1]} ${fromYear}–${MESI_BREVI[toMonth - 1]} ${toYear}`;
 }

@@ -1,6 +1,6 @@
 import { createRoute, z } from "@hono/zod-openapi";
 import { SUMMARY_CTE, type SummaryColumns, summaryParams, toSummary } from "../data/summary.ts";
-import { VARIANT_LABEL_SQL } from "../data/dues.ts";
+import { PERIOD_LABEL_SQL, VARIANT_LABEL_SQL } from "../data/dues.ts";
 import { euro, toCsv } from "../lib/csv.ts";
 import { DateSchema, bearer, commonErrors, createRouter } from "../lib/http.ts";
 import { todayIso } from "../lib/time.ts";
@@ -104,15 +104,17 @@ exportRoutes
         .bind(...range),
       db
         .prepare(
-          `SELECT a.payment_id, d.kind, d.year, d.month, pr.name AS product_name, ${VARIANT_LABEL_SQL} AS variant_label, d.quantity
+          `SELECT a.payment_id, d.kind, d.year, d.month, pr.name AS product_name, ${VARIANT_LABEL_SQL} AS variant_label, d.quantity,
+                  ${PERIOD_LABEL_SQL} AS period_label
              FROM payment_allocations a JOIN payments p ON p.id = a.payment_id JOIN dues d ON d.id = a.due_id
              LEFT JOIN products pr ON pr.id = d.product_id LEFT JOIN product_variants v ON v.id = d.variant_id
+             LEFT JOIN course_periods cp ON cp.id = d.course_period_id LEFT JOIN courses co ON co.id = cp.course_id
             WHERE p.paid_on BETWEEN ?1 AND ?2 ORDER BY a.id`,
         )
         .bind(...range),
     ]);
     const byPayment = new Map<number, Parameters<typeof describeAllocations>[0]>();
-    for (const a of allocs!.results as { payment_id: number; kind: "annuale" | "mensile" | "prodotto"; year: number; month: number | null; product_name: string | null; variant_label: string | null; quantity: number }[]) {
+    for (const a of allocs!.results as { payment_id: number; kind: "annuale" | "mensile" | "periodo" | "prodotto"; year: number; month: number | null; product_name: string | null; variant_label: string | null; quantity: number; period_label: string | null }[]) {
       byPayment.set(a.payment_id, [...(byPayment.get(a.payment_id) ?? []), a]);
     }
     const body = toCsv(
